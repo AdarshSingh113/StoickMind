@@ -43,6 +43,7 @@ class Case:
     max_total: float | None = None        # routine total <= this
     skin_type: str | None = None
     must_ask: bool = False                # should ask a clarifying question instead of recommending
+    ask_ok: bool = False                  # asking a clarifying question is an acceptable alternative to a tool call
     off_topic: bool = False               # should not recommend products
 
 
@@ -75,7 +76,8 @@ CASES = [
     Case("hi_routine", "mere liye 1200 ke andar ek complete routine bana do, combination skin hai",
          lang="hinglish", tools=["build_routine"], max_total=1200, skin_type="combination"),
     Case("hi_dark_circles", "dark circles bahut hai, koi cream hai?", lang="hinglish", tools=["search_products"]),
-    Case("hi_glow", "shaadi hai next month, glow chahiye face pe", lang="hinglish", tools=["search_products", "build_routine"]),
+    Case("hi_glow", "shaadi hai next month, glow chahiye face pe", lang="hinglish",
+         tools=["search_products", "build_routine"], ask_ok=True),  # skin type unknown: asking is correct too
     Case("profile_personalised", "Suggest something for me", customer_id=1,
          tools=["get_my_profile", "search_products", "build_routine"]),
     Case("profile_repurchase", "What did I buy last time? I want to order it again", customer_id=1,
@@ -108,7 +110,8 @@ def check(case: Case, turn, catalog: dict) -> dict[str, bool | None]:
     hinglish_score = len(words & HINGLISH_MARKERS)
 
     results: dict[str, bool | None] = {}
-    results["tools"] = any(t in used for t in case.tools) if case.tools else None
+    asked = "?" in reply and bool(QUESTION_WORDS.search(reply)) and not mentioned
+    results["tools"] = (any(t in used for t in case.tools) or (case.ask_ok and asked)) if case.tools else None
     # Grounded: every product named in the reply appeared in a tool result this turn
     # (or, for follow-ups, it's at least a real product: the name matched our catalogue).
     results["grounded"] = all(p["name"].lower() in blob for p in mentioned) if mentioned else None

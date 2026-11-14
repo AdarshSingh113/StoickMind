@@ -21,7 +21,7 @@ db.ensure_schema()  # adds tables introduced in later phases to an existing data
 
 # Local secrets (.streamlit/secrets.toml, never committed) -> environment variables.
 try:
-    for key in ("GEMINI_API_KEY", "KOTLER_LLM_MODEL", "KOTLER_LLM_BASE_URL"):
+    for key in ("GEMINI_API_KEY", "KOTLER_LLM_MODEL", "KOTLER_LLM_PROVIDER", "KOTLER_LLM_BASE_URL"):
         if key in st.secrets:
             os.environ.setdefault(key, str(st.secrets[key]))
 except Exception:  # no secrets file: fine, the key may come from the environment instead

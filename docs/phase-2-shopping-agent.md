@@ -7,13 +7,13 @@ only real products, prices and stock from our database.
 
 | File | Role |
 |---|---|
-| `kotler/llm.py` | LLM layer: one interface; Gemini (or any OpenAI-compatible API) plus a FakeLLM for tests |
+| `kotler/llm.py` | LLM layer: one interface, three backends: native Gemini (default), any OpenAI-compatible API, and a FakeLLM for tests |
 | `kotler/agent/tools.py` | 5 tools: `search_products`, `get_product_details`, `compare_products`, `build_routine`, `get_my_profile` |
 | `kotler/agent/prompts.py` | The system prompt: role, rules, language, format |
 | `kotler/agent/shopping.py` | The agent loop, memory and conversation logging |
 | `views/shop_assistant.py` | Chat page with a "chat as customer" picker and a tool-call inspector |
 | `kotler/evals/shopping.py` | 22 evaluation cases run against the real model |
-| `tests/test_phase2_agent.py` | 24 tests that run without any API (FakeLLM) |
+| `tests/test_phase2_agent.py` | 29 tests that run without any API (FakeLLM and a fake HTTP layer) |
 
 ## 1. What an LLM actually is (and isn't)
 
@@ -135,9 +135,53 @@ LLM output differs every time, so evals don't compare exact text. They check **p
 Every run is saved to `data/evals/`. Change the prompt, rerun, and compare. That's how you improve an
 AI product with evidence instead of vibes.
 
+## 9. Real-world lesson: provider quirks (why we have two backends)
+
+We first called Gemini through its **OpenAI-compatible** endpoint, so the same code could talk to any provider.
+Every request failed with *"Please pass a valid API key"*, even though the key was fine.
+Testing each way of sending the key found the cause:
+
+| How the key was sent | Result |
+|---|---|
+| Native Gemini API, `x-goog-api-key` header | ✅ |
+| OpenAI-compatible endpoint, any header | ❌ |
+
+Since 28 May 2026, new AI Studio keys are **auth keys** (`AQ.…`, tied to a service account), and the
+OpenAI-compatible endpoint doesn't accept them. So `GeminiLLM` talks to the native API and **translates**
+our OpenAI-style messages (see the table in its docstring). The agent, tools and tests didn't change at all.
+That's the payoff of hiding providers behind one interface.
+
+Then the newest model returned **503 "high demand"**, and an older one was **retired for new users**. Hence:
+
+- **Pinned model** (`gemini-3.5-flash`), not a "latest" alias, so evaluation results stay comparable.
+- **Retries with exponential backoff** (1.5s, 3s) for 429/5xx; **no retry** for a bad key (it won't fix itself).
+- **Fallback model** (`gemini-3.1-flash-lite`) when the main one is still overloaded: customers see a slightly
+  simpler answer instead of an error.
+
+Lesson: in production, the hard part is often the provider (keys, quotas, outages, deprecations), not the prompt.
+
+## 10. Results against real Gemini (gemini-3.5-flash)
+
+**21/22 on the first run.** The one failure was a mistake in the *eval*, not the agent: asked
+*"shaadi hai next month, glow chahiye"*, the agent asked for the skin type first, which is what the prompt tells it to do.
+After fixing the case: 22/22.
+
+| Check | Score |
+|---|---|
+| grounded (no invented products) | 15/15 |
+| budget respected | 5/5 |
+| right skin type | 9/9 |
+| replied in the customer's language | 22/22 |
+| refused off-topic / trick requests (order status, rashes, "90% discount") | 4/4 |
+
+Typical answer time is 3–8 s and about 3,500 tokens. Slower answers (20–40 s) were the provider retrying while overloaded.
+
+Lesson: **evals have bugs too.** When a case fails, read the actual answer before changing the prompt.
+
 ## Running it
 
-1. Put your key in `.streamlit/secrets.toml` (create the folder if needed):
+1. Put your key in `.streamlit/secrets.toml` (create the folder if needed). Both new `AQ.` auth keys and
+   older `AIza` keys work:
    ```toml
    GEMINI_API_KEY = "your-key"
    ```
@@ -145,8 +189,10 @@ AI product with evidence instead of vibes.
 3. Evals: `GEMINI_API_KEY=your-key python -m kotler.evals.shopping`
    (on Windows PowerShell: `$env:GEMINI_API_KEY="your-key"; python -m kotler.evals.shopping`).
 
-To use another provider, set `KOTLER_LLM_BASE_URL` and `KOTLER_LLM_MODEL`, e.g. Groq's free tier or
-a local Ollama. No code changes needed.
+Settings (environment variables or secrets): `KOTLER_LLM_MODEL` (default `gemini-3.5-flash`),
+`KOTLER_LLM_FALLBACK_MODELS` (default `gemini-3.1-flash-lite`). To use another provider, set
+`KOTLER_LLM_PROVIDER=openai` plus `KOTLER_LLM_BASE_URL` and `KOTLER_LLM_MODEL`, e.g. Groq's free tier or a
+local Ollama. No code changes needed.
 
 ## Exercises
 
@@ -166,3 +212,4 @@ a local Ollama. No code changes needed.
 - *How do you test something non-deterministic?* Mock the model for code tests; property-based evals for behaviour.
 - *Why not LangChain?* We can explain and debug every step; we'd adopt a framework once we need what it adds.
 - *How do you control cost and latency of an agent?* Step limits, trimmed history, compact tool results.
+- *What happens when the AI provider is down?* Retries with backoff, a fallback model, friendly errors, pinned versions.

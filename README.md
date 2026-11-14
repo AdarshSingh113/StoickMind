@@ -16,7 +16,7 @@ which COD orders will come back undelivered, and dashboards that measure everyth
 | Phase | Module | What it does for the business | Status |
 |---|---|---|---|
 | 1 | **Database & CRM** | Customers, orders, products, tickets; Customer 360; KPI dashboard with period comparison; cohort retention | ✅ Done |
-| 2 | **AI Shopping Agent** | Recommends products from natural language ("moisturizer for dry skin under ₹500"), English and Hinglish, grounded in the real catalogue | ✅ Built |
+| 2 | **AI Shopping Agent** | Recommends products from natural language ("moisturizer for dry skin under ₹500"), English and Hinglish, grounded in the real catalogue. 22/22 evals on real Gemini | ✅ Done |
 | 3 | **Support Agent + guardrails** | Tracks orders, handles complaints, RAG over policies, discount and refund limits, hands off to a human when unsure | ⏳ Next |
 | 4 | **COD RTO risk predictor** | Scores every COD order before shipping and triggers confirmation or a prepaid nudge for risky ones | |
 | 5 | **WhatsApp / Telegram channel** | Customers talk to the agents on the apps they actually use | |
@@ -34,8 +34,8 @@ Later: RFM segmentation, marketing automation, Agent Studio, demand forecasting,
 | pandas, Altair | Analysis and charts |
 | Faker | Street addresses (names come from our own region-aware lists) |
 | GitHub Actions | Runs the tests on every push (CI) |
-| Gemini API (free tier), via its OpenAI-compatible endpoint | LLM for the agents (any OpenAI-compatible provider works) |
-| openai (Python SDK) | Client for that endpoint |
+| Gemini API (free tier), native REST API | LLM for the agents (gemini-3.5-flash, with a fallback model) |
+| openai (Python SDK) | Optional: any OpenAI-compatible provider (Groq, Ollama, ...) |
 | scikit-learn | ML, from Phase 4 |
 | ChromaDB | Vector search for RAG, from Phase 3 |
 
@@ -50,7 +50,7 @@ pip install -r requirements.txt
 
 python -m kotler.seed.generate     # creates data/kotler.db (1,500 customers, ~3,700 orders)
 streamlit run app.py               # opens http://localhost:8501
-pytest                             # 35 tests (also run automatically on GitHub)
+pytest                             # 40 tests (also run automatically on GitHub)
 ```
 
 The app generates the database by itself on first run, so `streamlit run app.py` alone also works.

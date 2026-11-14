@@ -192,3 +192,89 @@ def test_whatsapp_formatting_converted_for_web():
     assert "**Neem Face Wash**" in out and "**Gel Sunscreen**" in out
     assert "**Gel Sunscreen**  \n  \nKya" in out  # list closed before the follow-up question
     assert f("**already bold** and 2*3*4") == "**already bold** and 2*3*4"
+
+
+# ------------------------------------------------------- native Gemini backend
+def test_gemini_message_translation():
+    """OpenAI-style history -> Gemini format: roles, tool calls and grouped tool results."""
+    from kotler.llm import GeminiLLM
+    msgs = [
+        {"role": "system", "content": "You are Kavya"},
+        {"role": "user", "content": "dry skin moisturizer"},
+        {"role": "assistant", "content": None, "tool_calls": [
+            {"id": "a", "type": "function", "function": {"name": "search_products", "arguments": '{"skin_type": "dry"}'}},
+            {"id": "b", "type": "function", "function": {"name": "get_my_profile", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "a", "content": '{"count": 1}'},
+        {"role": "tool", "tool_call_id": "b", "content": '{"logged_in": false}'},
+        {"role": "assistant", "content": "Try the Ceramide cream."},
+    ]
+    system, contents = GeminiLLM.to_gemini(msgs)
+    assert system == {"parts": [{"text": "You are Kavya"}]}
+    assert [c["role"] for c in contents] == ["user", "model", "user", "model"]
+    assert contents[1]["parts"][0]["functionCall"] == {"name": "search_products", "args": {"skin_type": "dry"}}
+    results = contents[2]["parts"]  # both tool results in ONE user turn, matched to their function names
+    assert [r["functionResponse"]["name"] for r in results] == ["search_products", "get_my_profile"]
+    assert results[0]["functionResponse"]["response"] == {"count": 1}
+
+
+def test_gemini_replays_native_parts_unchanged():
+    """Gemini's thought signatures must be sent back exactly as received."""
+    from kotler.llm import GeminiLLM
+    parts = [{"functionCall": {"name": "search_products", "args": {}}, "thoughtSignature": "abc123"}]
+    _, contents = GeminiLLM.to_gemini([{"role": "assistant", "content": None, "_gemini_parts": parts,
+                                         "tool_calls": [{"id": "x", "function": {"name": "search_products",
+                                                                                  "arguments": "{}"}}]}])
+    assert contents[0]["parts"] == parts
+
+
+class _Resp:
+    def __init__(self, status, data):
+        self.status_code, self._data, self.text = status, data, json.dumps(data)
+
+    def json(self):
+        return self._data
+
+
+def _gemini_ok(parts):
+    return _Resp(200, {"candidates": [{"content": {"role": "model", "parts": parts}}],
+                       "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5}})
+
+
+def test_gemini_parses_tool_calls_and_falls_back_when_overloaded(monkeypatch):
+    from kotler.llm import GeminiLLM
+    llm = GeminiLLM(model="main-model", api_key="test", max_retries=0)
+    llm.fallbacks = ["backup-model"]
+    seen = []
+
+    def fake_post(url, json, timeout, headers):
+        seen.append(url.split("/models/")[1])
+        assert headers == {"x-goog-api-key": "test"}
+        if "main-model" in url:
+            return _Resp(503, {"error": {"message": "high demand"}})
+        return _gemini_ok([{"functionCall": {"name": "search_products", "args": {"skin_type": "oily"}}}])
+
+    monkeypatch.setattr(llm._requests, "post", fake_post)
+    resp = llm.chat([{"role": "user", "content": "hi"}], tools=T.TOOL_SCHEMAS)
+    assert seen == ["main-model:generateContent", "backup-model:generateContent"]
+    assert llm.last_model == "backup-model"
+    assert resp.tool_calls[0].name == "search_products" and resp.tool_calls[0].arguments == {"skin_type": "oily"}
+    assert resp.raw["tool_calls"][0]["function"]["name"] == "search_products"
+    assert resp.prompt_tokens == 10
+
+
+def test_gemini_bad_key_is_not_retried(monkeypatch):
+    from kotler.llm import GeminiLLM
+    llm = GeminiLLM(model="m", api_key="bad", max_retries=2)
+    calls = []
+    monkeypatch.setattr(llm._requests, "post",
+                        lambda *a, **k: calls.append(1) or _Resp(400, {"error": {"message": "API key not valid"}}))
+    with pytest.raises(LLMError) as e:
+        llm.chat([{"role": "user", "content": "hi"}])
+    assert len(calls) == 1 and "configured" in e.value.user_message
+
+
+def test_gemini_schema_drops_empty_parameters():
+    from kotler.llm import GeminiLLM
+    decl = GeminiLLM._schema(T.TOOLS["get_my_profile"][1])
+    assert "parameters" not in decl  # Gemini rejects objects with no properties
+    assert "parameters" in GeminiLLM._schema(T.TOOLS["search_products"][1])

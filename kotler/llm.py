@@ -141,6 +141,160 @@ def text_response(text: str) -> LLMResponse:
     return LLMResponse(content=text, raw={"role": "assistant", "content": text})
 
 
-def get_llm() -> OpenAICompatLLM | None:
-    """The configured LLM, or None if no API key is set (the UI then explains how to add one)."""
-    return OpenAICompatLLM() if config.llm_api_key() else None
+class GeminiLLM:
+    """Google's native Gemini API (generateContent).
+
+    Why a second backend? Google's newer "auth keys" (they start with "AQ.") only work on the
+    native API, not on the OpenAI-compatible endpoint. So we translate our OpenAI-style
+    messages into Gemini's format and back. The agent never knows the difference:
+    that's the payoff of putting providers behind one interface.
+
+    OpenAI style                          Gemini native
+    ------------------------------------  ----------------------------------------------
+    {"role": "system", content}           systemInstruction: {parts: [{text}]}
+    {"role": "user", content}             {role: "user",  parts: [{text}]}
+    {"role": "assistant", content}        {role: "model", parts: [{text}]}
+    assistant tool_calls                  {role: "model", parts: [{functionCall: {name, args}}]}
+    {"role": "tool", tool_call_id, ...}   {role: "user",  parts: [{functionResponse: {name, response}}]}
+    """
+
+    BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+    def __init__(self, model: str | None = None, api_key: str | None = None, timeout: float = 60,
+                 max_retries: int = 2):
+        import requests
+
+        self._requests = requests
+        self.model = model or config.LLM_MODEL
+        self.fallbacks = [m for m in config.LLM_FALLBACK_MODELS if m != self.model]
+        self.api_key = api_key or config.llm_api_key() or ""
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.last_model: str | None = None  # which model actually answered (for logging)
+
+    # --------------------------------------------------------- translation
+    @staticmethod
+    def _schema(tool: dict) -> dict:
+        fn = tool["function"]
+        decl = {"name": fn["name"], "description": fn.get("description", "")}
+        params = fn.get("parameters") or {}
+        if params.get("properties"):  # Gemini rejects an object schema with no properties
+            decl["parameters"] = params
+        return decl
+
+    @staticmethod
+    def to_gemini(messages: list[dict]) -> tuple[dict | None, list[dict]]:
+        system, contents, names = None, [], {}
+        for m in messages:
+            role = m["role"]
+            if role == "system":
+                system = {"parts": [{"text": m["content"]}]}
+            elif role == "user":
+                contents.append({"role": "user", "parts": [{"text": m["content"] or ""}]})
+            elif role == "assistant":
+                if m.get("_gemini_parts"):  # replay exactly what Gemini sent (keeps thought signatures)
+                    parts = m["_gemini_parts"]
+                else:
+                    parts = [{"text": m["content"]}] if m.get("content") else []
+                    for tc in m.get("tool_calls") or []:
+                        parts.append({"functionCall": {"name": tc["function"]["name"],
+                                                       "args": json.loads(tc["function"]["arguments"] or "{}")}})
+                for tc in m.get("tool_calls") or []:
+                    names[tc["id"]] = tc["function"]["name"]
+                contents.append({"role": "model", "parts": parts or [{"text": ""}]})
+            elif role == "tool":
+                try:
+                    response = json.loads(m["content"])
+                except (json.JSONDecodeError, TypeError):
+                    response = {"result": m["content"]}
+                if not isinstance(response, dict):
+                    response = {"result": response}
+                part = {"functionResponse": {"name": names.get(m["tool_call_id"], "tool"), "response": response}}
+                # All results for one model turn go in ONE user message, in the same order as the calls.
+                if contents and contents[-1]["role"] == "user" and "functionResponse" in contents[-1]["parts"][0]:
+                    contents[-1]["parts"].append(part)
+                else:
+                    contents.append({"role": "user", "parts": [part]})
+        return system, contents
+
+    # ---------------------------------------------------------------- call
+    def chat(self, messages: list[dict], tools: list[dict] | None = None,
+             temperature: float = 0.3) -> LLMResponse:
+        system, contents = self.to_gemini(messages)
+        body: dict = {"contents": contents, "generationConfig": {"temperature": temperature}}
+        if system:
+            body["systemInstruction"] = system
+        if tools:
+            body["tools"] = [{"functionDeclarations": [self._schema(t) for t in tools]}]
+        # Main model first; if it's overloaded even after retries, fall back to the next one.
+        last_error: LLMError | None = None
+        for model in [self.model, *self.fallbacks]:
+            try:
+                return self._call(model, body)
+            except LLMError as e:
+                last_error = e
+                if not getattr(e, "retryable", False):
+                    raise
+        raise last_error  # every model was overloaded
+
+    def _call(self, model: str, body: dict) -> LLMResponse:
+        url = f"{self.BASE}/models/{model}:generateContent"
+        for attempt in range(self.max_retries + 1):
+            start = time.perf_counter()
+            try:
+                r = self._requests.post(url, json=body, timeout=self.timeout,
+                                        headers={"x-goog-api-key": self.api_key})
+            except self._requests.RequestException as e:
+                if attempt == self.max_retries:
+                    raise LLMError(str(e), "Sorry, I couldn't reach the AI service. Please try again.") from e
+                time.sleep(2 * 2 ** attempt)
+                continue
+            if r.status_code == 429 or r.status_code >= 500:
+                if attempt == self.max_retries:
+                    err = LLMError(f"{model} {r.status_code}: {r.text[:300]}",
+                                   "I'm getting a lot of questions right now. Please try again in a minute."
+                                   if r.status_code == 429 else "Sorry, the AI service is busy. Please try again.")
+                    err.retryable = True
+                    raise err
+                time.sleep(1.5 * 2 ** attempt)
+                continue
+            if r.status_code != 200:
+                raise LLMError(f"{r.status_code}: {r.text[:300]}",
+                               "The AI service isn't configured correctly (check the API key and model).")
+            break
+        latency = int((time.perf_counter() - start) * 1000)
+        self.last_model = model
+
+        data = r.json()
+        candidates = data.get("candidates") or []
+        if not candidates:  # e.g. blocked by safety filters
+            reason = (data.get("promptFeedback") or {}).get("blockReason", "no answer")
+            return LLMResponse(content=f"Sorry, I can't help with that ({reason}).", latency_ms=latency,
+                               raw={"role": "assistant", "content": "Sorry, I can't help with that."})
+        parts = (candidates[0].get("content") or {}).get("parts") or []
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+        calls, tool_calls = [], []
+        for i, p in enumerate(parts):
+            if "functionCall" in p:
+                fc = p["functionCall"]
+                call_id = fc.get("id") or f"call_{i}"
+                args = fc.get("args") or {}
+                calls.append(ToolCall(call_id, fc["name"], args))
+                tool_calls.append({"id": call_id, "type": "function",
+                                   "function": {"name": fc["name"], "arguments": json.dumps(args)}})
+        raw = {"role": "assistant", "content": text or None, "_gemini_parts": parts}
+        if tool_calls:
+            raw["tool_calls"] = tool_calls
+        usage = data.get("usageMetadata") or {}
+        return LLMResponse(content=text or None, tool_calls=calls, raw=raw, latency_ms=latency,
+                           prompt_tokens=usage.get("promptTokenCount", 0),
+                           completion_tokens=usage.get("candidatesTokenCount", 0)
+                           + usage.get("thoughtsTokenCount", 0))
+
+
+def get_llm() -> GeminiLLM | OpenAICompatLLM | None:
+    """The configured LLM, or None if no API key is set (the UI then explains how to add one).
+    KOTLER_LLM_PROVIDER: "gemini" (native Gemini API, default) or "openai" (any OpenAI-compatible API)."""
+    if not config.llm_api_key():
+        return None
+    return OpenAICompatLLM() if config.LLM_PROVIDER == "openai" else GeminiLLM()
