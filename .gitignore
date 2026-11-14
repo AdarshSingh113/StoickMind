@@ -21,3 +21,16 @@ yarn-debug.log*
 Thumbs.db
 .idea/
 .vscode/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Generated data (recreate with: python -m kotler.seed.generate)
+data/
+
+# Secrets
+.streamlit/secrets.toml
