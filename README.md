@@ -1,4 +1,4 @@
-# New Project
+# Kotler AI
 
 > Placeholder — update this README with the project name, description, and setup steps.
 
