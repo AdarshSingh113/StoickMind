@@ -1,0 +1,9 @@
+[project]
+name = "kotler-ai"
+version = "0.1.0"
+description = "AI commerce, CRM and automation platform for Indian D2C brands"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]   # lets `pytest` import the kotler package from the project root
+testpaths = ["tests"]
