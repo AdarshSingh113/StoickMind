@@ -67,3 +67,9 @@ def query_one(sql: str, params: tuple | dict = (), db_path: Path | str | None = 
     with get_conn(db_path) as conn:
         row = conn.execute(sql, params).fetchone()
         return dict(row) if row else None
+
+
+def ensure_schema(db_path: Path | str | None = None) -> None:
+    """Create any tables that are missing (safe to run on every start-up)."""
+    with get_conn(db_path) as conn:
+        init_schema(conn)

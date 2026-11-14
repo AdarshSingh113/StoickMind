@@ -100,3 +100,31 @@ CREATE INDEX IF NOT EXISTS idx_items_order       ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_items_product     ON order_items(product_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_customer  ON support_tickets(customer_id);
 CREATE INDEX IF NOT EXISTS idx_customers_phone   ON customers(phone);
+
+-- ---------------------------------------------------------------- Phase 2
+-- Every chat is stored: it's the customer's history (memory), the data for
+-- evaluation (Phase 6), and the audit trail of what the AI said and did.
+CREATE TABLE IF NOT EXISTS conversations (
+    id           INTEGER PRIMARY KEY,
+    customer_id  INTEGER REFERENCES customers(id),   -- NULL = guest
+    agent        TEXT NOT NULL,                      -- 'shopping', later 'support'
+    channel      TEXT NOT NULL DEFAULT 'web',        -- web, whatsapp, telegram
+    model        TEXT,
+    created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id                 INTEGER PRIMARY KEY,
+    conversation_id    INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    role               TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
+    content            TEXT,
+    tool_name          TEXT,
+    tool_args          TEXT,        -- JSON
+    created_at         TEXT NOT NULL,
+    latency_ms         INTEGER,
+    prompt_tokens      INTEGER,
+    completion_tokens  INTEGER,
+    error              TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);

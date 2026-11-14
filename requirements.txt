@@ -3,3 +3,4 @@ pandas>=2.2
 altair>=5
 faker>=30
 pytest>=8
+openai>=1.50
