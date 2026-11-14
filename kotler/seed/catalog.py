@@ -199,3 +199,45 @@ TICKET_TEMPLATES = {
         ["Order {order} cancel kar do",
          "Galti se order ho gaya, {order} cancel karo"]),
 }
+
+# --- Names -------------------------------------------------------------------
+# Hand-curated so every name looks Indian and fits the customer's region.
+# A skincare brand's buyers skew female, so the generator picks female ~70%.
+STATE_REGION = {
+    "Delhi": "north", "Uttar Pradesh": "north", "Rajasthan": "north", "Haryana": "north",
+    "Chandigarh": "north", "Madhya Pradesh": "north", "Bihar": "north",
+    "Maharashtra": "west", "Gujarat": "west",
+    "Karnataka": "south", "Telangana": "south", "Tamil Nadu": "south", "Kerala": "south",
+    "West Bengal": "east",
+}
+
+FIRST_NAMES = {
+    "female": {
+        "common": ["Ananya", "Priya", "Sneha", "Pooja", "Neha", "Riya", "Ishita", "Kavya", "Diya", "Aditi",
+                   "Shreya", "Nisha", "Meera", "Tanvi", "Simran", "Anjali", "Sakshi", "Aisha", "Khushi", "Divya"],
+        "north": ["Gurleen", "Harpreet", "Muskan", "Shivani", "Kritika", "Aarti", "Jyoti", "Payal", "Swati", "Mansi"],
+        "west": ["Gauri", "Mrunal", "Rutuja", "Hetal", "Krupa", "Prachi", "Sayali", "Janhvi", "Dhara", "Ketaki"],
+        "south": ["Lakshmi", "Keerthana", "Divya", "Aishwarya", "Swathi", "Nandini", "Revathi", "Anagha", "Sindhu", "Harini"],
+        "east": ["Debjani", "Ritika", "Moumita", "Sohini", "Payel", "Ankita", "Tanushree", "Rimjhim", "Srijita", "Puja"],
+    },
+    "male": {
+        "common": ["Rahul", "Arjun", "Rohan", "Aditya", "Karan", "Vikram", "Aman", "Nikhil", "Siddharth", "Varun",
+                   "Kunal", "Rishabh", "Manish", "Abhishek", "Ankit", "Saurabh", "Yash", "Harsh", "Akash", "Dev"],
+        "north": ["Gurpreet", "Harshit", "Shubham", "Prateek", "Mohit", "Deepak", "Sachin", "Vivek", "Ravi", "Tarun"],
+        "west": ["Omkar", "Tejas", "Chirag", "Parth", "Mihir", "Aniket", "Ketan", "Jay", "Nirav", "Sahil"],
+        "south": ["Karthik", "Pradeep", "Srinivas", "Arun", "Vignesh", "Rajesh", "Naveen", "Suresh", "Praveen", "Hari"],
+        "east": ["Arnab", "Sayan", "Souvik", "Debashish", "Abhijit", "Sourav", "Anirban", "Subhajit", "Rajdeep", "Indranil"],
+    },
+}
+
+SURNAMES = {
+    "common": ["Sharma", "Verma", "Gupta", "Singh", "Kumar", "Jain", "Agarwal", "Mehta", "Khan", "Ali"],
+    "north": ["Chauhan", "Yadav", "Saxena", "Srivastava", "Tiwari", "Mishra", "Pandey", "Rathore", "Malhotra",
+              "Kapoor", "Sandhu", "Gill", "Bhatia", "Chaudhary", "Tripathi"],
+    "west": ["Patil", "Deshmukh", "Kulkarni", "Joshi", "Shah", "Patel", "Desai", "Pawar", "Gokhale", "Bhosale",
+             "Mehta", "Trivedi", "Jadhav", "Shinde", "Modi"],
+    "south": ["Reddy", "Nair", "Iyer", "Menon", "Rao", "Krishnan", "Pillai", "Naidu", "Subramanian", "Shetty",
+              "Hegde", "Gowda", "Raman", "Varghese", "Murthy"],
+    "east": ["Banerjee", "Chatterjee", "Mukherjee", "Das", "Bose", "Ghosh", "Sen", "Roy", "Dutta", "Chakraborty",
+             "Sarkar", "Mitra", "Saha", "Paul", "Bhattacharya"],
+}

@@ -15,7 +15,8 @@ Planted patterns
 1. Customer personas (hidden, not stored): loyal, regular, one_time, churned.
    -> Phase 4 RFM / churn models should separate them.
 2. COD RTO risk rises with: tier-3 city, first order, poor address,
-   high order value, late-night ordering. Falls with past successful deliveries.
+   high order value, late-night ordering, and above all PAST RTOs (a hidden
+   5-10% of customers are "serial refusers"). Falls with past successful deliveries.
    -> Phase 4 RTO predictor should learn these.
 3. Seasonality: Diwali (Oct-Nov) and January sale spikes.
 4. Customers mostly buy products matching their skin type, and re-buy
@@ -64,6 +65,7 @@ class Customer:
     channel: str
     created_at: datetime
     persona: str
+    serial_refuser: bool = False   # hidden: habitually refuses COD parcels
     churn_at: datetime | None = None
     favourites: list[int] = field(default_factory=list)
 
@@ -138,17 +140,27 @@ class DatasetGenerator:
                 if phone not in phones:
                     phones.add(phone)
                     break
-            name = self.fake.name()
+            name = self._name(state)
             skin = _weighted(self.rng, catalog.SKIN_TYPES)
             self.customers.append(Customer(
                 id=cid, name=name, phone=phone,
-                email=f"{name.lower().replace(' ', '.').replace('..', '.')}{cid}@example.com",
+                email=f"{name.lower().replace(' ', '.')}{cid}@example.com",
                 city=city, state=state, tier=tier, pincode=pincode, skin_type=skin,
                 language=_weighted(self.rng, lang_w),
                 channel=_weighted(self.rng, catalog.ACQUISITION_CHANNELS),
                 created_at=created, persona=persona, churn_at=churn_at,
+                serial_refuser=self.rng.random() < (0.10 if tier == 3 else 0.05),
                 favourites=self._pick_products(skin, k=2),
             ))
+
+    def _name(self, state: str) -> str:
+        """Region-aware Indian name: 70% local names, 30% pan-Indian ones."""
+        region = catalog.STATE_REGION[state]
+        gender = "female" if self.rng.random() < 0.7 else "male"
+        firsts = catalog.FIRST_NAMES[gender]
+        first = self.rng.choice(firsts[region] if self.rng.random() < 0.7 else firsts["common"])
+        last = self.rng.choice(catalog.SURNAMES[region] if self.rng.random() < 0.7 else catalog.SURNAMES["common"])
+        return f"{first} {last}"
 
     def _pick_products(self, skin: str, k: int) -> list[int]:
         matching = [p["id"] for p in self.products
@@ -191,12 +203,19 @@ class DatasetGenerator:
         product_by_id = {p["id"]: p for p in self.products}
         drafts = []
         for c in self.customers:
-            delivered_before = 0
+            history = {"delivered": 0, "rto": 0}
             for n, ts in enumerate(self._order_times(c)):
                 ts = ts.replace(hour=self._hour(), minute=self.rng.randint(0, 59), second=self.rng.randint(0, 59))
                 if ts > self.end:
                     ts = self.end - timedelta(minutes=self.rng.randint(5, 600))
+                if n and ts <= prev_ts:  # keep each customer's orders in time order
+                    ts = prev_ts + timedelta(minutes=self.rng.randint(30, 240))
+                    if ts > self.end:
+                        break
+                prev_ts = ts
                 first = n == 0
+                if first:
+                    c.created_at = ts  # account is created with the first order
 
                 # --- basket
                 lines: dict[int, int] = {}
@@ -222,15 +241,17 @@ class DatasetGenerator:
 
                 # --- payment & address
                 cod_p = (0.75 if c.tier == 3 else 0.62 if c.tier == 2 else 0.5) if first else 0.38
+                if c.serial_refuser:
+                    cod_p = 0.95  # people who refuse parcels never pay upfront
                 payment = "cod" if self.rng.random() < cod_p else "prepaid"
                 poor = self.rng.random() < (0.22 if c.tier == 3 else 0.12 if c.tier == 2 else 0.06)
                 addr_q = round(self.rng.uniform(0.15, 0.5) if poor else self.rng.uniform(0.7, 1.0), 2)
 
                 # --- outcome (the RTO model's "ground truth")
                 status, shipped, delivered, expected = self._outcome(
-                    c, ts, payment, first, addr_q, total, delivered_before)
-                if status == "delivered":
-                    delivered_before += 1
+                    c, ts, payment, first, addr_q, total, history)
+                if status in history:
+                    history[status] += 1
                 drafts.append(dict(
                     customer_id=c.id, created_at=ts, status=status, payment_method=payment,
                     subtotal=round(subtotal, 2), discount=discount, shipping_fee=shipping, total=total,
@@ -253,7 +274,7 @@ class DatasetGenerator:
                 self.items.append(dict(order_id=oid, product_id=pid, quantity=qty,
                                        unit_price=product_by_id[pid]["price"]))
 
-    def _outcome(self, c, ts, payment, first, addr_q, total, delivered_before):
+    def _outcome(self, c, ts, payment, first, addr_q, total, history):
         transit = self.rng.randint(*{1: (2, 4), 2: (3, 5), 3: (4, 8)}[c.tier])
         expected = ts + timedelta(days=transit)
         shipped = ts + timedelta(hours=self.rng.randint(12, 36))
@@ -270,7 +291,9 @@ class DatasetGenerator:
         if payment == "cod":
             risk = (0.08 + {1: 0.0, 2: 0.05, 3: 0.12}[c.tier] + (0.10 if first else 0.0)
                     + (0.15 if addr_q < 0.5 else 0.0) + (0.06 if total > 1500 else 0.0)
-                    + (0.07 if ts.hour < 5 else 0.0) - min(delivered_before, 3) * 0.04)
+                    + (0.07 if ts.hour < 5 else 0.0) - min(history["delivered"], 3) * 0.04
+                    # Strongest real-world signal: past refusals predict future refusals.
+                    + min(history["rto"], 2) * 0.18 + (0.35 if c.serial_refuser else 0.0))
         else:
             risk = 0.02
         if self.rng.random() < max(0.01, min(risk, 0.75)):

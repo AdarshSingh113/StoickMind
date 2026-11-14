@@ -70,8 +70,8 @@ def test_kpis_are_sane(db_path):
     assert k["orders"] > 2000
     assert 0 < k["net_revenue"] < k["gmv"]
     assert 400 < k["aov"] < 2000
-    assert 0.2 < k["repeat_rate"] < 0.8
-    assert 0.05 < k["rto_rate"] < 0.35
+    assert k["new_buyers"] == k["buyers"]  # all time: every buyer is new at some point
+    assert 0.05 < k["rto_rate"] < 0.4
 
 
 def test_customer_and_order_lookup(db_path):
@@ -88,3 +88,44 @@ def test_hinglish_tickets_exist(db_path):
     n = q("""SELECT COUNT(*) n FROM support_tickets t JOIN customers c ON c.id = t.customer_id
              WHERE c.preferred_language != 'en'""", db_path)["n"]
     assert n > 50
+
+
+def test_orders_in_time_order_per_customer(db_path):
+    bad = q("""SELECT COUNT(*) n FROM customers c
+               WHERE c.created_at > (SELECT MIN(created_at) FROM orders o WHERE o.customer_id = c.id)""", db_path)
+    assert bad["n"] == 0
+
+
+def test_past_rto_predicts_future_rto(db_path):
+    """Planted pattern: COD customers who refused before refuse again far more often."""
+    df = db.query_df("""
+        WITH cod AS (
+          SELECT customer_id, status,
+                 SUM(status = 'rto') OVER (PARTITION BY customer_id ORDER BY created_at
+                                           ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS past_rto
+          FROM orders WHERE payment_method = 'cod' AND status IN ('delivered', 'returned', 'rto'))
+        SELECT COALESCE(past_rto, 0) > 0 AS had_rto, AVG(status = 'rto') AS rate
+        FROM cod GROUP BY 1 ORDER BY 1""", db_path=db_path)
+    no_history, with_history = df.rate.tolist()
+    assert with_history > 2 * no_history
+
+
+def test_period_kpis_new_buyers(db_path):
+    k = crm.kpis("2026-10-15 00:00:00", "2026-11-14 20:00:01")
+    assert 0 < k["new_buyers"] < k["buyers"]
+
+
+def test_repeat_rate_and_cohorts(db_path):
+    r = crm.repeat_rate_90d()
+    assert r["customers"] > 300 and 0.15 < r["rate"] < 0.8
+    cohorts = crm.cohort_retention()
+    assert (cohorts["M0"] == 100).all()
+    assert cohorts["M1"].dropna().between(0, 100).all()
+    assert cohorts.iloc[-1][["M1", "M2"]].isna().all()  # newest cohort has no future
+
+
+def test_names_look_indian(db_path):
+    from kotler.seed import catalog
+    surnames = {s for group in catalog.SURNAMES.values() for s in group}
+    names = db.query_df("SELECT name FROM customers", db_path=db_path).name
+    assert names.str.split().str[-1].isin(surnames).all()

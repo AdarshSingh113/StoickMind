@@ -11,7 +11,11 @@ GMV            Gross Merchandise Value: value of all orders placed, excluding
 Net revenue    Value of orders actually delivered and kept (excludes RTO,
                returns, in-transit). "How much money did we really make?"
 AOV            Average order value = GMV / number of non-cancelled orders.
-Repeat rate    % of buying customers with 2+ non-cancelled orders.
+New buyers     Buyers in the period whose first-ever order is in the period.
+90-day repeat  Of customers who first bought 90+ days ago, % who bought again
+               within 90 days of their first order. Fair to every customer:
+               each one gets the same 90-day window. (A naive "2+ orders" rate
+               punishes customers who joined yesterday.)
 RTO rate       % of finished COD shipments that came back undelivered
                (rto / (delivered + returned + rto)).
 """
@@ -42,11 +46,12 @@ def kpis(start: str | None = None, end: str | None = None) -> dict:
           COALESCE(SUM(total) FILTER (WHERE status = 'rto'), 0)         AS rto_value
         FROM orders {where}
     """, params)
-    repeat = query_one(f"""
-        SELECT AVG(n >= 2) AS repeat_rate FROM (
-          SELECT customer_id, COUNT(*) AS n FROM orders {where} {'AND' if where else 'WHERE'} {LIVE}
-          GROUP BY customer_id)
-    """, params)
+    new = query_one(f"""
+        WITH firsts AS (SELECT customer_id, MIN(created_at) AS first_at FROM orders
+                        WHERE {LIVE} GROUP BY customer_id)
+        SELECT COUNT(*) AS new_buyers FROM firsts
+        WHERE first_at >= COALESCE(:start, '0000') AND first_at < COALESCE(:end, '9999')
+    """, {"start": start, "end": end})
     orders = row["orders"] or 0
     return {
         "orders": orders,
@@ -54,11 +59,62 @@ def kpis(start: str | None = None, end: str | None = None) -> dict:
         "net_revenue": row["net_revenue"],
         "aov": row["gmv"] / orders if orders else 0.0,
         "buyers": row["buyers"] or 0,
-        "repeat_rate": repeat["repeat_rate"] or 0.0,
+        "new_buyers": new["new_buyers"] or 0,
         "cod_share": row["cod_share"] or 0.0,
         "rto_rate": row["cod_rto"] / row["cod_finished"] if row["cod_finished"] else 0.0,
         "rto_value": row["rto_value"],
     }
+
+
+def data_end() -> str:
+    """Timestamp of the newest order: our 'today' for period filters."""
+    return query_one("SELECT MAX(created_at) AS t FROM orders")["t"]
+
+
+def repeat_rate_90d(window_days: int = 90) -> dict:
+    """% of customers who bought again within `window_days` of their first order.
+    Only customers whose first order is at least `window_days` old are counted."""
+    row = query_one(f"""
+        WITH live AS (SELECT customer_id, created_at FROM orders WHERE {LIVE}),
+        firsts AS (SELECT customer_id, MIN(created_at) AS first_at FROM live GROUP BY customer_id),
+        eligible AS (SELECT * FROM firsts
+                     WHERE julianday((SELECT MAX(created_at) FROM orders)) - julianday(first_at) >= :w)
+        SELECT COUNT(*) AS customers,
+               AVG(EXISTS (SELECT 1 FROM live l WHERE l.customer_id = e.customer_id
+                           AND l.created_at > e.first_at
+                           AND julianday(l.created_at) - julianday(e.first_at) <= :w)) AS rate
+        FROM eligible e
+    """, {"w": window_days})
+    return {"customers": row["customers"] or 0, "rate": row["rate"] or 0.0}
+
+
+def cohort_retention(max_months: int = 6) -> pd.DataFrame:
+    """Cohort table: rows = month of first purchase, columns = months later,
+    values = % of the cohort that ordered in that month (month 0 is always 100%)."""
+    df = query_df(f"""
+        WITH live AS (SELECT customer_id, created_at FROM orders WHERE {LIVE}),
+        firsts AS (SELECT customer_id, MIN(created_at) AS first_at FROM live GROUP BY customer_id)
+        SELECT substr(f.first_at, 1, 7) AS cohort,
+               (CAST(substr(l.created_at, 1, 4) AS INT) - CAST(substr(f.first_at, 1, 4) AS INT)) * 12
+             + (CAST(substr(l.created_at, 6, 2) AS INT) - CAST(substr(f.first_at, 6, 2) AS INT)) AS month_n,
+               COUNT(DISTINCT l.customer_id) AS active
+        FROM live l JOIN firsts f USING (customer_id)
+        GROUP BY cohort, month_n
+    """)
+    if df.empty:
+        return df
+    table = df.pivot(index="cohort", columns="month_n", values="active").fillna(0)
+    sizes = table[0]
+    pct = table.div(sizes, axis=0).mul(100).round(1)
+    pct = pct[[c for c in pct.columns if c <= max_months]].astype(float)
+    # Hide cells in the future (cohort too young to have reached that month).
+    last = pd.Period(df.cohort.max(), "M")
+    for cohort in pct.index:
+        age = (last - pd.Period(cohort, "M")).n
+        pct.loc[cohort, [c for c in pct.columns if c > age]] = float("nan")
+    pct.columns = [f"M{c}" for c in pct.columns]
+    pct.insert(0, "customers", sizes.astype(int))
+    return pct.reset_index()
 
 
 def monthly_summary() -> pd.DataFrame:
