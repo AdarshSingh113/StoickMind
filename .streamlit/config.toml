@@ -1,0 +1,60 @@
+# Kotler AI visual theme. Colours are shared with views/ui.py (PALETTE).
+
+[server]
+enableStaticServing = true   # serves ./static (our self-hosted Inter font)
+
+[client]
+toolbarMode = "minimal"      # hides the developer "Deploy" button for viewers
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#4F46E5"            # indigo
+backgroundColor = "#F6F7FB"         # soft grey page
+secondaryBackgroundColor = "#EEF0F7"
+textColor = "#0F172A"
+linkColor = "#4F46E5"
+linkUnderline = false
+borderColor = "#E6E8F0"
+dataframeBorderColor = "#EEF0F5"
+dataframeHeaderBackgroundColor = "#F8F9FC"
+dataframeHeaderTextColor = "#64748B"
+showWidgetBorder = true
+baseRadius = "10px"
+buttonRadius = "10px"
+font = "Inter, -apple-system, 'Segoe UI', Roboto, sans-serif"
+headingFont = "Inter, -apple-system, 'Segoe UI', Roboto, sans-serif"
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+headingFontSizes = ["1.85rem", "1.3rem", "1.1rem"]
+baseFontSize = 15
+chartCategoricalColors = ["#4F46E5", "#14B8A6", "#F59E0B", "#F43F5E", "#8B5CF6", "#0EA5E9", "#84CC16", "#64748B"]
+chartSequentialColors = ["#EEF2FF", "#E0E7FF", "#C7D2FE", "#A5B4FC", "#818CF8", "#6366F1", "#4F46E5", "#4338CA", "#3730A3", "#312E81"]
+greenColor = "#16A34A"
+redColor = "#E11D48"
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/fonts/inter-latin-400-normal.woff2"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/fonts/inter-latin-500-normal.woff2"
+weight = 500
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/fonts/inter-latin-600-normal.woff2"
+weight = 600
+
+[[theme.fontFaces]]
+family = "Inter"
+url = "app/static/fonts/inter-latin-700-normal.woff2"
+weight = 700
+
+[theme.sidebar]
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F4FA"
+borderColor = "#EEF0F5"

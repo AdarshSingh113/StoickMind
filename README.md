@@ -93,3 +93,10 @@ Each phase has a write-up explaining *what*, *why* and *how*:
 
 - [Phase 1: Database & CRM](docs/phase-1-database-and-crm.md)
 - [Phase 2: AI Shopping Agent](docs/phase-2-shopping-agent.md)
+
+## Design
+
+The app uses a custom design system on top of Streamlit: theme in `.streamlit/config.toml`
+(indigo palette, self-hosted Inter font in `static/fonts`), and shared components in `views/ui.py`
+(KPI strips, cards, badges, insight cards, status colours, one chart style). Every page uses them,
+so the whole product looks consistent.

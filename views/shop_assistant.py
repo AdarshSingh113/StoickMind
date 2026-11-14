@@ -6,6 +6,7 @@ import streamlit as st
 from kotler import config, db
 from kotler.agent.shopping import ShoppingAgent
 from kotler.llm import get_llm
+from views.ui import badge, card, page_header
 
 SUGGESTIONS = [
     "Moisturizer for dry skin under ₹500",
@@ -38,26 +39,39 @@ def _reset():
 
 
 def render():
-    st.title("AI Shop Assistant")
-    st.caption("Chat as a customer would. The agent searches the real catalogue through tools. "
-               "Open **Tools used** under a reply to see exactly what it did.")
+    page_header("Shop Assistant", "An AI agent that recommends products from the real catalogue, "
+                "in English and Hinglish.", "AI agents")
 
     llm = get_llm()
-    if llm is None:
-        st.warning("No AI key configured, so the assistant is offline.", icon=":material/key_off:")
-        st.markdown("Get a free key at **aistudio.google.com**, then create `.streamlit/secrets.toml` "
-                    "in the project folder containing:")
-        st.code('GEMINI_API_KEY = "your-key-here"', language="toml")
-        st.markdown("Restart the app. This file is in `.gitignore`, so the key never goes to GitHub.")
-        return
+    online = llm is not None
+    with card("agent"):
+        a, b = st.columns([3, 2], vertical_alignment="center", gap="medium")
+        status = '<span class="k-online"></span>Online' if online else \
+            '<span class="k-online" style="background:#F43F5E"></span>Offline: no API key'
+        a.markdown(f"""<div class="k-agent"><div class="k-agent-avatar">✦</div><div>
+            <div class="k-section">Kavya · shopping assistant</div>
+            <div class="k-section-sub" style="font-size:.84rem">{status} &nbsp;·&nbsp; {badge("5 tools", "indigo")}
+            {badge("English + Hinglish", "teal")} {badge(config.LLM_MODEL, "neutral")}</div></div></div>""",
+                   unsafe_allow_html=True)
+        if online:
+            customers = _customers()
+            labels = {None: "Guest (not logged in)"} | {
+                int(r.id): f"{r.name} · {r.city} · {r.skin_type} skin" for r in customers.itertuples()}
+            c1, c2 = b.columns([3, 1], vertical_alignment="bottom")
+            customer_id = c1.selectbox("Chat as", list(labels), format_func=labels.get, on_change=_reset,
+                                       help="Logged-in customers get personalised answers from their profile.")
+            c2.button("New", on_click=_reset, use_container_width=True, icon=":material/edit_square:",
+                      help="Start a new conversation")
 
-    customers = _customers()
-    labels = {None: "Guest (not logged in)"} | {
-        int(r.id): f"{r.name} · {r.city} · {r.skin_type} skin · {r.preferred_language}" for r in customers.itertuples()}
-    left, right = st.columns([3, 1])
-    customer_id = left.selectbox("Chat as", list(labels), format_func=labels.get, on_change=_reset,
-                                 help="Logged-in customers get personalised answers from their profile and history.")
-    right.button("New chat", on_click=_reset, use_container_width=True, icon=":material/refresh:")
+    if not online:
+        st.write("")
+        with card("setup", "Connect a free Gemini key to switch the assistant on"):
+            st.markdown("1. Get a key at **aistudio.google.com** → *Get API key*.\n"
+                        "2. Create `.streamlit/secrets.toml` in the project folder (or, on Streamlit Cloud, "
+                        "*Settings → Secrets*) containing:")
+            st.code('GEMINI_API_KEY = "your-key-here"', language="toml")
+            st.markdown("3. Restart the app. The secrets file is git-ignored, so the key never reaches GitHub.")
+        return
 
     if "shop_agent" not in st.session_state:
         st.session_state["shop_agent"] = ShoppingAgent(llm, customer_id=customer_id)
@@ -70,28 +84,29 @@ def render():
 
     prompt = st.chat_input("Ask about products, routines, ingredients... (English or Hinglish)")
     if not turns and not prompt:
-        st.markdown("**Try one of these:**")
+        st.write("")
+        st.markdown('<div class="k-section-sub" style="margin-bottom:6px">Try asking</div>', unsafe_allow_html=True)
         cols = st.columns(2)
         for i, s in enumerate(SUGGESTIONS):
-            if cols[i % 2].button(s, key=f"sugg{i}", use_container_width=True):
+            if cols[i % 2].button(s, key=f"sugg{i}", use_container_width=True, icon=":material/chat_bubble:"):
                 prompt = s
     if prompt:
         with st.chat_message("user"):
             st.markdown(prompt)
-        with st.chat_message("assistant", avatar=":material/spa:"):
+        with st.chat_message("assistant", avatar=":material/auto_awesome:"):
             with st.spinner("Kavya is looking through the catalogue..."):
                 turn = agent.reply(prompt)
         turns.append({"user": prompt, "turn": turn})
         st.rerun()
 
-    st.caption(f"Model: `{config.LLM_MODEL}` · conversation #{agent.conversation_id}")
+    st.caption(f"Conversation #{agent.conversation_id} · replies use only products returned by tools")
 
 
 def _show_turn(t: dict):
     turn = t["turn"]
     with st.chat_message("user"):
         st.markdown(t["user"])
-    with st.chat_message("assistant", avatar=":material/spa:"):
+    with st.chat_message("assistant", avatar=":material/auto_awesome:"):
         if turn.error:
             st.error(turn.reply)
         else:

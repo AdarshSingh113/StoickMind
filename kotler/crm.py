@@ -118,15 +118,45 @@ def cohort_retention(max_months: int = 6) -> pd.DataFrame:
 
 
 def monthly_summary() -> pd.DataFrame:
-    return query_df(f"""
-        SELECT substr(created_at, 1, 7) AS month,
-               COUNT(*) FILTER (WHERE {LIVE})                              AS orders,
-               ROUND(SUM(total) FILTER (WHERE {LIVE}), 0)                  AS gmv,
-               ROUND(SUM(total) FILTER (WHERE status = 'delivered'), 0)    AS net_revenue,
-               ROUND(SUM(total) FILTER (WHERE status = 'rto'), 0)          AS rto_loss,
-               COUNT(DISTINCT customer_id) FILTER (WHERE {LIVE})           AS buyers
-        FROM orders GROUP BY month ORDER BY month
+    df = query_df(f"""
+        WITH firsts AS (SELECT customer_id, substr(MIN(created_at), 1, 7) AS first_month
+                        FROM orders WHERE {LIVE} GROUP BY customer_id)
+        SELECT substr(o.created_at, 1, 7) AS month,
+               COUNT(*) FILTER (WHERE o.{LIVE})                              AS orders,
+               ROUND(SUM(o.total) FILTER (WHERE o.{LIVE}), 0)                AS gmv,
+               ROUND(SUM(o.total) FILTER (WHERE o.status = 'delivered'), 0)  AS net_revenue,
+               ROUND(COALESCE(SUM(o.total) FILTER (WHERE o.status = 'rto'), 0), 0) AS rto_loss,
+               COUNT(DISTINCT o.customer_id) FILTER (WHERE o.{LIVE})         AS buyers,
+               (SELECT COUNT(*) FROM firsts f WHERE f.first_month = substr(o.created_at, 1, 7)) AS new_buyers,
+               ROUND(100.0 * AVG(o.status = 'rto') FILTER (WHERE o.payment_method = 'cod' AND o.{FINISHED}), 1)
+                                                                             AS cod_rto_pct
+        FROM orders o GROUP BY month ORDER BY month
     """)
+    df["aov"] = (df.gmv / df.orders).round(0)
+    df["returning_buyers"] = df.buyers - df.new_buyers
+    df["growth_pct"] = (df.net_revenue.pct_change() * 100).round(1)
+    return df
+
+
+def category_by_month(months: int = 6) -> pd.DataFrame:
+    """GMV per product category per month (last `months` months), for a heatmap table."""
+    df = query_df(f"""
+        SELECT p.category, substr(o.created_at, 1, 7) AS month, ROUND(SUM(oi.quantity * oi.unit_price), 0) AS gmv
+        FROM order_items oi JOIN orders o ON o.id = oi.order_id AND o.{LIVE}
+        JOIN products p ON p.id = oi.product_id
+        GROUP BY p.category, month
+    """)
+    if df.empty:
+        return df
+    table = df.pivot(index="category", columns="month", values="gmv").fillna(0)
+    table = table[sorted(table.columns)[-months:]]
+    return table.loc[table.sum(axis=1).sort_values(ascending=False).index]
+
+
+def ticket_categories() -> pd.DataFrame:
+    return query_df("""SELECT category, COUNT(*) AS tickets,
+                              COUNT(*) FILTER (WHERE status != 'resolved') AS unresolved
+                       FROM support_tickets GROUP BY category ORDER BY tickets DESC""")
 
 
 def channel_summary() -> pd.DataFrame:
