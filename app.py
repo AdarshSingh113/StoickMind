@@ -27,7 +27,8 @@ try:
 except Exception:  # no secrets file: fine, the key may come from the environment instead
     pass
 
-from views import agent_studio, customers, intelligence, overview, products, retention, shop_assistant, support, ui  # noqa: E402
+from views import (agent_studio, campaigns, customers, intelligence, overview, products, retention,  # noqa: E402
+                   shop_assistant, support, ui)
 
 ui.inject_css()
 ui.PAGES.update({
@@ -37,6 +38,7 @@ ui.PAGES.update({
     "intelligence": st.Page(intelligence.render, title="Customer Intelligence", icon=":material/insights:",
                             url_path="intelligence"),
     "products": st.Page(products.render, title="Products", icon=":material/inventory_2:", url_path="products"),
+    "campaigns": st.Page(campaigns.render, title="Campaigns", icon=":material/campaign:", url_path="campaigns"),
     "shop": st.Page(shop_assistant.render, title="Shop Assistant", icon=":material/auto_awesome:", url_path="shop"),
     "studio": st.Page(agent_studio.render, title="Agent Studio", icon=":material/tune:", url_path="studio"),
     "support": st.Page(support.render, title="Helpdesk", icon=":material/support_agent:", url_path="support"),
@@ -44,10 +46,11 @@ ui.PAGES.update({
 P = ui.PAGES
 nav = st.navigation({
     "Business": [P["overview"], P["customers"], P["retention"], P["intelligence"], P["products"]],
+    "Marketing": [P["campaigns"]],
     "AI agents": [P["shop"], P["studio"]],
     "Support": [P["support"]],
 })
 
 ui.sidebar_brand()
-ui.sidebar_footer(f"Store: {config.BRAND_NAME}", "Phase 5 · Customer data platform & ML. Next: retention journeys & AI campaigns.")
+ui.sidebar_footer(f"Store: {config.BRAND_NAME}", "Phase 6 · Retention journeys & AI campaigns. Next: real channels (Telegram, WhatsApp).")
 nav.run()

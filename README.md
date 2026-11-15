@@ -20,8 +20,8 @@ which COD orders will come back undelivered, and dashboards that measure everyth
 | 3 | **Agent Studio** + Skin Quiz agent | Agents as configuration (instructions, goal, success criteria, tools), versions, playground, LLM-as-judge. 26-case real-model eval | ✅ Done |
 | 4 | **AI Helpdesk + Order Management** | Asha: order tracking, cancel-and-save, damaged items, refunds within limits, policy RAG, human approvals and handoff, AI copilot on real tickets | ✅ Done |
 | 5 | **Customer Intelligence (CDP + ML)** | RFM segments, churn and 90-day value models, **COD RTO predictor** with rupee-based threshold, plain-English segment builder with SQL guardrails | ✅ Done |
-| 6 | **Retention + AI Campaigns** | Replenishment, win-back and cross-sell journeys; AI-written messages; A/B tests and uplift in ₹ | ⏳ Next |
-| 7 | **Real channels** | Telegram bot, WhatsApp test number, embeddable website chat widget | |
+| 6 | **Retention + AI Campaigns** | 4 journeys, AI-written A/B messages (English + Hinglish) with placeholder safety, marketing guardrails, holdout groups, uplift / significance / ROI on simulated customers | ✅ Done |
+| 7 | **Real channels** | Telegram bot, WhatsApp test number, embeddable website chat widget | ⏳ Next |
 | 8 | **Evaluation, observability, "Ask your data"** | Success rates per agent, cost, latency, ₹ saved; chat with your data | |
 
 Optional later: React visual flow builder, Shopify sync, gamification.
@@ -52,7 +52,7 @@ pip install -r requirements.txt
 
 python -m kotler.seed.generate     # creates data/kotler.db (1,500 customers, ~3,700 orders)
 streamlit run app.py               # opens http://localhost:8501
-pytest                             # 175 tests (also run automatically on GitHub)
+pytest                             # 201 tests (also run automatically on GitHub)
 python -m kotler.ml.pipeline       # train the ML models (the app also does this automatically)
 ```
 
@@ -79,13 +79,14 @@ kotler/
   policy.py           store policies: limits enforced in code + the text the AI retrieves
   llm.py              LLM interface: Gemini / any OpenAI-compatible API, plus a fake for tests
   agent/              Agent Studio, generic runtime, tools (shopping + support), policy retrieval, judge, copilot
+  marketing/          journeys, campaign engine, customer simulator, experiment statistics
   ml/                 feature store, RFM segments, churn/value/RTO models, segment builder, training pipeline
   evals/              real-model evaluations: shopping/quiz agents and the helpdesk agent (checks DB outcomes)
   config.py           settings from environment variables
   seed/
     catalog.py        36 products, 28 cities, regional Indian names, ticket templates (English + Hinglish)
     generate.py       realistic data generator with planted patterns
-views/                Streamlit pages: overview, customers, retention, customer intelligence, products, shop assistant, agent studio, helpdesk
+views/                Streamlit pages: overview, customers, retention, customer intelligence, products, campaigns, shop assistant, agent studio, helpdesk
 app.py                Streamlit entry point
 tests/                data-integrity and pattern tests
 .github/workflows/    CI: runs pytest on Python 3.11 and 3.13
@@ -101,6 +102,7 @@ Each phase has a write-up explaining *what*, *why* and *how*:
 - [Phase 3: Agent Studio](docs/phase-3-agent-studio.md)
 - [Phase 4: AI Helpdesk & Order Management](docs/phase-4-helpdesk.md)
 - [Phase 5: Customer Intelligence](docs/phase-5-customer-intelligence.md)
+- [Phase 6: Retention journeys & AI campaigns](docs/phase-6-campaigns.md)
 
 ## Design
 
