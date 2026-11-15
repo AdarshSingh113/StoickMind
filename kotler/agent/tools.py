@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from kotler import db
 from kotler.db import query_df, query_one
 
 # Customers write "pimples", "daag", "chipchipa skin"... the catalogue says
@@ -175,9 +176,16 @@ def build_routine(ctx: ToolContext, skin_type: str, concern: str | None = None,
                   budget: float | None = None, time_of_day: str = "morning") -> dict:
     """Pick one product per step for the skin type (and concern), within budget.
 
-    With <=6 candidates per step there are at most ~1,300 combinations, so we
-    simply try them all and keep the best one that fits the budget. When the
-    search space is this small, brute force is the simplest correct algorithm.
+    With <=6 candidates per step there are at most ~2,400 combinations, so we simply
+    try them all and keep the best one that fits. When the search space is this small,
+    brute force is the simplest correct algorithm.
+
+    If a complete routine doesn't fit the budget, optional steps are dropped by priority
+    (a real shop assistant offers something affordable, then the upgrade):
+      cleanse  - always included
+      protect  - sunscreen, essential in the morning
+      treat    - the serum for the customer's concern
+      moisturize
     """
     from itertools import product as combos
 
@@ -190,49 +198,66 @@ def build_routine(ctx: ToolContext, skin_type: str, concern: str | None = None,
         return _score(r, rank_terms) + (1.5 if skin_type in r["skin_types"].split(",") else 0)
 
     steps = [s for s in ROUTINE_STEPS if not (time_of_day == "night" and s[1] == "sunscreen")]
+    names = [s for s, _ in steps]
+    weight = {"cleanse": 10, "protect": 4, "treat": 3 if terms else 1, "moisturize": 3 if skin_type == "dry" else 2}
     candidates: list[list[dict | None]] = []
     for step, cat in steps:
         rows = [r for r in _products("AND category = :c AND stock > 0", {"c": cat}) if _suits(r, skin_type)]
         rows.sort(key=lambda r: (-fit(r), -r["rating"]))
         rows = rows[:6]
-        # The serum step is optional (skipped if the budget is tight), the rest are essential.
-        candidates.append(rows + [None] if step == "treat" else (rows or [None]))
+        candidates.append(rows if step == "cleanse" and rows else rows + [None])
+
+    def cost(combo) -> float:
+        return sum(r["price"] for r in combo if r)
 
     def value(combo) -> tuple:
         picked = [r for r in combo if r]
-        has_treat = combo[[s for s, _ in steps].index("treat")] is not None
+        importance = sum(weight[n] for n, r in zip(names, combo) if r)
         quality = sum(fit(r) for r in picked) + sum(r["rating"] for r in picked) / 10
-        # With a concern, the treatment step matters most; then completeness; then fit; then price.
-        return (has_treat if terms else 0, len(picked), quality, -sum(r["price"] for r in picked))
+        return (importance, quality, -cost(combo))
 
-    best = None
-    for combo in combos(*candidates):
-        total = sum(r["price"] for r in combo if r)
-        if budget is not None and total > budget:
-            continue
-        if best is None or value(combo) > value(best):
-            best = combo
+    # "Complete" = every ESSENTIAL step. The serum is only essential when there's a concern to treat.
+    essential = [n for n in names if n != "treat" or terms]
+
+    def is_complete(combo) -> bool:
+        return all(r for n, r in zip(names, combo) if n in essential)
+
+    all_combos = list(combos(*candidates))
+    complete = [c for c in all_combos if is_complete(c)]
+    best_complete = max(complete, key=value) if complete else None
+    affordable = [c for c in all_combos if budget is None or cost(c) <= budget]
+    best = max(affordable, key=value) if affordable else None
+
     within = best is not None
-    if best is None:  # nothing fits: return the cheapest possible routine and say so
-        best = min(combos(*candidates), key=lambda c: sum(r["price"] for r in c if r))
+    if best is None:  # not even a cleanser fits: return the cheapest complete routine and say so
+        best = min(complete or all_combos, key=cost)
 
-    chosen = [(step, r) for (step, _), r in zip(steps, best) if r]
-    total = sum(r["price"] for _, r in chosen)
+    chosen = [(step, r) for step, r in zip(names, best) if r]
+    total = cost(best)
+    skipped = [n for n, r in zip(names, best) if r is None and n in essential]
     result = {
         "skin_type": skin_type, "time_of_day": time_of_day,
         "steps": [{"step": step, **_public(r)} for step, r in chosen],
-        "total_inr": total, "within_budget": within,
+        "total_inr": total, "within_budget": within, "complete": not skipped,
     }
+    if skipped and within:
+        cheapest_complete = min((c for c in complete), key=cost, default=None)
+        result["skipped_steps"] = skipped
+        result["note"] = (f"To fit ₹{budget:.0f}, this routine skips: {', '.join(skipped)}. "
+                          + (f"The cheapest complete routine costs ₹{cost(cheapest_complete):.0f}. "
+                             if cheapest_complete else "")
+                          + "Offer this one first, and mention the complete routine as an optional upgrade.")
     if not within:
-        result["note"] = f"No complete routine fits ₹{budget:.0f}; this is the cheapest one (₹{total:.0f})."
+        result["note"] = f"Nothing fits ₹{budget:.0f}; this is the cheapest routine (₹{total:.0f}). Say so honestly."
     kits = [r for r in _products("AND category = 'kit' AND stock > 0") if _suits(r, skin_type)
             and (budget is None or r["price"] <= budget) and r["price"] < total]
     if kits:
         result["cheaper_kit_alternative"] = _public(max(kits, key=lambda r: _score(r, terms)))
+    _ = best_complete
     return result
 
 
-def get_my_profile(ctx: ToolContext) -> dict:
+def get_my_profile(ctx: ToolContext, _include_language: bool = False) -> dict:
     """The logged-in customer's preferences and history. Deliberately leaves out
     phone, email and address: the shopping agent doesn't need them (data minimisation)."""
     if ctx.customer_id is None:
@@ -248,13 +273,34 @@ def get_my_profile(ctx: ToolContext) -> dict:
         FROM order_items oi JOIN orders o ON o.id = oi.order_id AND o.status != 'cancelled'
         JOIN products p ON p.id = oi.product_id
         WHERE o.customer_id = ? GROUP BY p.id ORDER BY times_bought DESC LIMIT 3""", (ctx.customer_id,))
+    # The usual language is NOT given to the model here: a fresh "hinglish" in a tool result
+    # outweighs "reply in the language of the latest message" in the prompt. Only the system
+    # prompt gets it (via _include_language, which the model can't set), labelled as a fallback.
+    extra = {"preferred_language": c["preferred_language"]} if _include_language else {}
     return {
         "logged_in": True, "first_name": c["name"].split()[0], "city": c["city"],
-        "skin_type": c["skin_type"], "preferred_language": c["preferred_language"],
+        "skin_type": c["skin_type"], **extra,
         "customer_since": c["created_at"][:10], "orders": stats["orders"],
         "last_order_date": (stats["last_order_at"] or "")[:10] or None,
         "favourite_products": favs.to_dict("records"),
     }
+
+
+def save_skin_profile(ctx: ToolContext, skin_type: str) -> dict:
+    """WRITE tool: remember the logged-in customer's skin type.
+
+    Write tools need extra care: they change data. Rules applied here:
+    - only the logged-in customer's own record (id from the session, never from the model)
+    - only one field, validated against a fixed list
+    - guests can't write anything
+    """
+    if ctx.customer_id is None:
+        return {"saved": False, "reason": "Customer is not logged in; nothing saved."}
+    if skin_type not in SKIN_TYPES:
+        return {"error": f"skin_type must be one of {', '.join(SKIN_TYPES)}."}
+    with db.get_conn() as conn:
+        conn.execute("UPDATE customers SET skin_type = ? WHERE id = ?", (skin_type, ctx.customer_id))
+    return {"saved": True, "skin_type": skin_type}
 
 
 # ------------------------------------------------------------- registry
@@ -305,7 +351,15 @@ TOOLS: dict[str, tuple[Callable[..., dict], dict]] = {
         "The logged-in customer's skin type, preferred language, order count and favourite products. "
         "Use to personalise, e.g. to know their skin type or what they bought before.",
         {})),
+    "save_skin_profile": (save_skin_profile, _schema(
+        "save_skin_profile",
+        "Save the logged-in customer's skin type to their profile so future conversations remember it. "
+        "Only call after the customer has told you or confirmed their skin type.",
+        {"skin_type": SKIN}, ["skin_type"])),
 }
+
+# Tools that change data. The Studio flags them, and they deserve stricter review.
+WRITE_TOOLS = {"save_skin_profile"}
 
 TOOL_SCHEMAS = [schema for _, schema in TOOLS.values()]
 

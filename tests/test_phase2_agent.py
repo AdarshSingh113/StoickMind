@@ -79,8 +79,22 @@ def test_routine_with_concern_includes_treatment_when_affordable():
 
 
 def test_routine_impossible_budget_is_reported():
-    r = T.build_routine(CTX, "oily", None, 300)
+    r = T.build_routine(CTX, "oily", None, 200)  # not even a cleanser fits
     assert not r["within_budget"] and "note" in r
+
+
+def test_tight_budget_drops_optional_steps_by_priority():
+    """₹800 can't buy a complete oily routine: keep cleanser + sunscreen, mention the upgrade."""
+    r = T.build_routine(CTX, "oily", "acne", 800)
+    steps = [s["step"] for s in r["steps"]]
+    assert r["within_budget"] and r["total_inr"] <= 800
+    assert steps[0] == "cleanse" and "protect" in steps
+    assert not r["complete"] and r["skipped_steps"] and "complete routine costs" in r["note"]
+
+
+def test_night_routine_has_no_sunscreen():
+    steps = [s["step"] for s in T.build_routine(CTX, "dry", None, None, "night")["steps"]]
+    assert "protect" not in steps and steps[0] == "cleanse"
 
 
 def test_profile_hides_personal_data():
@@ -170,7 +184,7 @@ def test_conversation_is_stored():
     assert rows.role.tolist() == ["user", "tool", "assistant"]
     assert rows.tool_name.iloc[1] == "get_my_profile"
     conv = db.query_one("SELECT customer_id, agent FROM conversations WHERE id = ?", (agent.conversation_id,))
-    assert conv == {"customer_id": 1, "agent": "shopping"}
+    assert conv == {"customer_id": 1, "agent": "kavya"}  # conversations record which agent handled them
 
 
 def test_system_prompt_is_personalised():

@@ -128,3 +128,46 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+
+-- ---------------------------------------------------------------- Phase 3
+-- Agent Studio: an agent is CONFIGURATION, not code. The runtime reads these
+-- rows, so a new agent (or a better prompt) needs no deploy.
+CREATE TABLE IF NOT EXISTS agents (
+    slug              TEXT PRIMARY KEY,            -- stable id, e.g. 'kavya'
+    name              TEXT NOT NULL,               -- persona name shown to customers
+    role              TEXT NOT NULL,               -- e.g. 'shopping assistant'
+    description       TEXT NOT NULL DEFAULT '',    -- internal note for the team
+    instructions      TEXT NOT NULL,               -- "Context & instructions"
+    goal              TEXT NOT NULL,               -- "Agent's goal"
+    success_criteria  TEXT NOT NULL,               -- "Success criteria" (also used by the judge)
+    tools             TEXT NOT NULL,               -- JSON list of allowed tool names
+    temperature       REAL NOT NULL DEFAULT 0.3,
+    max_steps         INTEGER NOT NULL DEFAULT 5,
+    status            TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'live')),
+    version           INTEGER NOT NULL DEFAULT 1,
+    is_builtin        INTEGER NOT NULL DEFAULT 0,
+    updated_at        TEXT NOT NULL
+);
+
+-- Every save keeps a full snapshot, so any version can be compared or restored.
+CREATE TABLE IF NOT EXISTS agent_versions (
+    id          INTEGER PRIMARY KEY,
+    slug        TEXT NOT NULL REFERENCES agents(slug) ON DELETE CASCADE,
+    version     INTEGER NOT NULL,
+    snapshot    TEXT NOT NULL,                     -- JSON of the whole config
+    note        TEXT,
+    created_at  TEXT NOT NULL,
+    UNIQUE (slug, version)
+);
+
+-- Results of the LLM judge scoring a conversation against the agent's success criteria.
+CREATE TABLE IF NOT EXISTS conversation_scores (
+    id               INTEGER PRIMARY KEY,
+    conversation_id  INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    agent_slug       TEXT NOT NULL,
+    agent_version    INTEGER,
+    achieved         INTEGER NOT NULL,             -- 0/1: success criteria met?
+    score            INTEGER NOT NULL,             -- 1-5 overall quality
+    reason           TEXT,
+    created_at       TEXT NOT NULL
+);

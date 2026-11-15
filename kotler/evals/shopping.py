@@ -1,7 +1,7 @@
 """Evaluate the shopping agent against the REAL model.
 
-Run:  python -m kotler.evals.shopping            (all cases)
-      python -m kotler.evals.shopping --only en_budget_dry,hi_pimples
+Run:  python -m kotler.evals.shopping            (all cases, both agents)
+      python -m kotler.evals.shopping --only en_budget_dry,quiz_full_en
 
 Unit tests check our code with a fake model. Evals check the model's
 behaviour, and LLM answers differ every time, so we can't compare exact text.
@@ -28,7 +28,10 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
 from kotler import config, db
-from kotler.agent.shopping import ShoppingAgent
+from types import SimpleNamespace
+
+from kotler.agent.runtime import Agent
+from kotler.agent.studio import get_agent
 from kotler.llm import get_llm
 
 
@@ -44,6 +47,8 @@ class Case:
     skin_type: str | None = None
     must_ask: bool = False                # should ask a clarifying question instead of recommending
     ask_ok: bool = False                  # asking a clarifying question is an acceptable alternative to a tool call
+    agent: str = "kavya"                  # which Studio agent to test
+    turns: list[str] | None = None        # multi-turn: customer messages sent in order (message is ignored)
     off_topic: bool = False               # should not recommend products
 
 
@@ -82,6 +87,15 @@ CASES = [
          tools=["get_my_profile", "search_products", "build_routine"]),
     Case("profile_repurchase", "What did I buy last time? I want to order it again", customer_id=1,
          tools=["get_my_profile"]),
+    # ---- Skin quiz agent (Agentic Acquisition): multi-turn conversations
+    Case("quiz_starts", "Start my skin quiz", agent="skin-quiz", must_ask=True),
+    Case("quiz_full_en", "", agent="skin-quiz", tools=["build_routine"], max_total=1500, skin_type="combination",
+         turns=["Hi, I want a skincare routine", "oily T-zone only", "acne", "no", "₹800-1500", "morning"]),
+    Case("quiz_full_hinglish", "", agent="skin-quiz", lang="hinglish", tools=["build_routine"], max_total=800,
+         skin_type="oily", turns=["mujhe apni skin ke liye routine chahiye", "dopahar tak pura face oily ho jata hai",
+                                  "pimples", "nahi", "800 ke andar", "subah"]),
+    Case("quiz_skip", "Skip the quiz please. I have dry skin and my budget is ₹1000 for a full morning routine.",
+         agent="skin-quiz", tools=["build_routine"], max_total=1000, skin_type="dry"),
 ]
 
 HINGLISH_MARKERS = {"hai", "hain", "ke", "liye", "aap", "aapki", "aapke", "aapko", "kar", "karo", "karein", "ye",
@@ -91,7 +105,8 @@ QUESTION_WORDS = re.compile(r"\?|oily|dry|combination|sensitive", re.I)
 
 
 def _catalog() -> dict[str, dict]:
-    return {r["name"].lower(): r for r in db.query_df("SELECT name, price, skin_types, stock FROM products").to_dict("records")}
+    return {r["name"].lower(): r for r in
+            db.query_df("SELECT name, price, skin_types, stock, category FROM products").to_dict("records")}
 
 
 def _mentioned(reply: str, catalog: dict) -> list[dict]:
@@ -119,7 +134,11 @@ def check(case: Case, turn, catalog: dict) -> dict[str, bool | None]:
     if case.max_price and mentioned:
         results["budget"] = all(p["price"] <= case.max_price for p in mentioned)
     elif case.max_total and mentioned:
-        results["budget"] = sum(p["price"] for p in mentioned) <= case.max_total
+        # Kits are offered as ALTERNATIVES to the routine, so they're checked on their own, not summed.
+        routine = [p for p in mentioned if p["category"] != "kit"]
+        kits = [p for p in mentioned if p["category"] == "kit"]
+        results["budget"] = (sum(p["price"] for p in routine) <= case.max_total
+                             and all(k["price"] <= case.max_total for k in kits))
     else:
         results["budget"] = None
     if case.skin_type and mentioned:
@@ -143,7 +162,15 @@ def run(only: set[str] | None = None, delay: float = 4.0) -> dict:
     rows = []
     cases = [c for c in CASES if not only or c.id in only]
     for i, case in enumerate(cases, 1):
-        turn = ShoppingAgent(llm, customer_id=case.customer_id, channel="eval").reply(case.message)
+        runner = Agent(get_agent(case.agent), llm, customer_id=case.customer_id, channel="eval")
+        turns = [runner.reply(m) for m in (case.turns or [case.message])]
+        # Judge the final reply, but count tools and tool results from the whole conversation.
+        last = turns[-1]
+        turn = SimpleNamespace(reply=last.reply, tools=[t for tr in turns for t in tr.tools],
+                               error=next((tr.error for tr in turns if tr.error), None),
+                               latency_ms=sum(tr.latency_ms for tr in turns),
+                               prompt_tokens=sum(tr.prompt_tokens for tr in turns),
+                               completion_tokens=sum(tr.completion_tokens for tr in turns))
         res = check(case, turn, catalog)
         applicable = {k: v for k, v in res.items() if v is not None}
         passed = all(applicable.values()) and not turn.error

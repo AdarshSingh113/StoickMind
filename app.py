@@ -27,7 +27,7 @@ try:
 except Exception:  # no secrets file: fine, the key may come from the environment instead
     pass
 
-from views import customers, overview, products, retention, shop_assistant, support, ui  # noqa: E402
+from views import agent_studio, customers, overview, products, retention, shop_assistant, support, ui  # noqa: E402
 
 ui.inject_css()
 ui.PAGES.update({
@@ -36,15 +36,16 @@ ui.PAGES.update({
     "retention": st.Page(retention.render, title="Retention", icon=":material/autorenew:", url_path="retention"),
     "products": st.Page(products.render, title="Products", icon=":material/inventory_2:", url_path="products"),
     "shop": st.Page(shop_assistant.render, title="Shop Assistant", icon=":material/auto_awesome:", url_path="shop"),
+    "studio": st.Page(agent_studio.render, title="Agent Studio", icon=":material/tune:", url_path="studio"),
     "support": st.Page(support.render, title="Support tickets", icon=":material/support_agent:", url_path="support"),
 })
 P = ui.PAGES
 nav = st.navigation({
     "Business": [P["overview"], P["customers"], P["retention"], P["products"]],
-    "AI agents": [P["shop"]],
+    "AI agents": [P["shop"], P["studio"]],
     "Support": [P["support"]],
 })
 
 ui.sidebar_brand()
-ui.sidebar_footer(f"Store: {config.BRAND_NAME}", "Phase 2 · AI Shopping Agent. Next: support agent with guardrails.")
+ui.sidebar_footer(f"Store: {config.BRAND_NAME}", "Phase 3 · Agent Studio. Next: Helpdesk & order management agents.")
 nav.run()
