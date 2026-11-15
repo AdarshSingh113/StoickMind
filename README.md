@@ -19,8 +19,8 @@ which COD orders will come back undelivered, and dashboards that measure everyth
 | 2 | **AI Shopping Agent** | Product recommendations from natural language, English and Hinglish, grounded in the real catalogue | ✅ Done |
 | 3 | **Agent Studio** + Skin Quiz agent | Agents as configuration (instructions, goal, success criteria, tools), versions, playground, LLM-as-judge. 26-case real-model eval | ✅ Done |
 | 4 | **AI Helpdesk + Order Management** | Asha: order tracking, cancel-and-save, damaged items, refunds within limits, policy RAG, human approvals and handoff, AI copilot on real tickets | ✅ Done |
-| 5 | **Agentic CDP + ML** | RFM, churn, lifetime value, **COD RTO predictor**, plain-English segment builder | ⏳ Next |
-| 6 | **Retention + AI Campaigns** | Replenishment, win-back and cross-sell journeys; AI-written messages; A/B tests and uplift in ₹ | |
+| 5 | **Customer Intelligence (CDP + ML)** | RFM segments, churn and 90-day value models, **COD RTO predictor** with rupee-based threshold, plain-English segment builder with SQL guardrails | ✅ Done |
+| 6 | **Retention + AI Campaigns** | Replenishment, win-back and cross-sell journeys; AI-written messages; A/B tests and uplift in ₹ | ⏳ Next |
 | 7 | **Real channels** | Telegram bot, WhatsApp test number, embeddable website chat widget | |
 | 8 | **Evaluation, observability, "Ask your data"** | Success rates per agent, cost, latency, ₹ saved; chat with your data | |
 
@@ -38,7 +38,7 @@ Optional later: React visual flow builder, Shopify sync, gamification.
 | GitHub Actions | Runs the tests on every push (CI) |
 | Gemini API (free tier), native REST API | LLM for the agents (gemini-3.5-flash, with a fallback model) |
 | openai (Python SDK) | Optional: any OpenAI-compatible provider (Groq, Ollama, ...) |
-| scikit-learn | ML, from Phase 5 |
+| scikit-learn | Churn, value and RTO models (logistic regression, gradient boosting) |
 | ChromaDB | Vector search for RAG, from Phase 3 |
 
 ## Quick start
@@ -52,7 +52,8 @@ pip install -r requirements.txt
 
 python -m kotler.seed.generate     # creates data/kotler.db (1,500 customers, ~3,700 orders)
 streamlit run app.py               # opens http://localhost:8501
-pytest                             # 136 tests (also run automatically on GitHub)
+pytest                             # 175 tests (also run automatically on GitHub)
+python -m kotler.ml.pipeline       # train the ML models (the app also does this automatically)
 ```
 
 The app generates the database by itself on first run, so `streamlit run app.py` alone also works.
@@ -78,12 +79,13 @@ kotler/
   policy.py           store policies: limits enforced in code + the text the AI retrieves
   llm.py              LLM interface: Gemini / any OpenAI-compatible API, plus a fake for tests
   agent/              Agent Studio, generic runtime, tools (shopping + support), policy retrieval, judge, copilot
+  ml/                 feature store, RFM segments, churn/value/RTO models, segment builder, training pipeline
   evals/              real-model evaluations: shopping/quiz agents and the helpdesk agent (checks DB outcomes)
   config.py           settings from environment variables
   seed/
     catalog.py        36 products, 28 cities, regional Indian names, ticket templates (English + Hinglish)
     generate.py       realistic data generator with planted patterns
-views/                Streamlit pages: overview, customers, retention, products, shop assistant, agent studio, helpdesk
+views/                Streamlit pages: overview, customers, retention, customer intelligence, products, shop assistant, agent studio, helpdesk
 app.py                Streamlit entry point
 tests/                data-integrity and pattern tests
 .github/workflows/    CI: runs pytest on Python 3.11 and 3.13
@@ -98,6 +100,7 @@ Each phase has a write-up explaining *what*, *why* and *how*:
 - [Phase 2: AI Shopping Agent](docs/phase-2-shopping-agent.md)
 - [Phase 3: Agent Studio](docs/phase-3-agent-studio.md)
 - [Phase 4: AI Helpdesk & Order Management](docs/phase-4-helpdesk.md)
+- [Phase 5: Customer Intelligence](docs/phase-5-customer-intelligence.md)
 
 ## Design
 

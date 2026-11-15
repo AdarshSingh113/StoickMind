@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from kotler import crm
+from kotler import crm, db
 from views import inr
 from views.ui import badge, card, kpi_strip, page_header, profile_header, status_styler
 
@@ -74,6 +74,11 @@ def _profile(customer_id: int, status: str):
     live = orders[orders.status != "cancelled"]
     tickets = crm.customer_tickets(customer_id)
     rto = int((orders.status == "rto").sum())
+    try:  # ML scores from Customer Intelligence (Phase 5), if the models have been trained
+        score = db.query_one("SELECT segment, churn_risk, clv_12m FROM customer_scores WHERE customer_id = ?",
+                             (customer_id,))
+    except Exception:
+        score = None
 
     with card("profile"):
         tone = {"Active": "good", "At risk": "amber", "Lapsed": "bad"}.get(status, "neutral")
@@ -89,7 +94,16 @@ def _profile(customer_id: int, status: str):
          "sub": "delivered orders"},
         {"label": "Average order", "value": inr(live.total.mean() if len(live) else 0)},
         {"label": "Last order", "value": (orders.created_at.iloc[0][:10] if len(orders) else "–")},
+    ])
+    st.write("")
+    kpi_strip([
         {"label": "Support tickets", "value": f"{len(tickets)}"},
+        *([{"label": "Segment", "value": score["segment"], "sub": "RFM"},
+           {"label": "Churn risk", "value": f"{score['churn_risk']:.0%}",
+            "delta_html": badge("high" if score["churn_risk"] >= 0.7 else "medium" if score["churn_risk"] >= 0.4 else "low",
+                                "bad" if score["churn_risk"] >= 0.7 else "amber" if score["churn_risk"] >= 0.4 else "good"),
+            "sub": "next 90 days"},
+           {"label": "Predicted value", "value": inr(score["clv_12m"]), "sub": "next 12 months"}] if score else []),
     ])
     st.write("")
     with card("history"):
