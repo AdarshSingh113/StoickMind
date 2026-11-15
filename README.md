@@ -21,8 +21,8 @@ which COD orders will come back undelivered, and dashboards that measure everyth
 | 4 | **AI Helpdesk + Order Management** | Asha: order tracking, cancel-and-save, damaged items, refunds within limits, policy RAG, human approvals and handoff, AI copilot on real tickets | ✅ Done |
 | 5 | **Customer Intelligence (CDP + ML)** | RFM segments, churn and 90-day value models, **COD RTO predictor** with rupee-based threshold, plain-English segment builder with SQL guardrails | ✅ Done |
 | 6 | **Retention + AI Campaigns** | 4 journeys, AI-written A/B messages (English + Hinglish) with placeholder safety, marketing guardrails, holdout groups, uplift / significance / ROI on simulated customers | ✅ Done |
-| 7 | **Real channels** | Telegram bot, WhatsApp test number, embeddable website chat widget | ⏳ Next |
-| 8 | **Evaluation, observability, "Ask your data"** | Success rates per agent, cost, latency, ₹ saved; chat with your data | |
+| 7 | **Real channels** | Same agents on a Telegram bot, WhatsApp test number and a one-line website chat widget; signed webhooks, idempotency, consent, rate limits, real campaign delivery | ✅ Done |
+| 8 | **Evaluation, observability, "Ask your data"** | Success rates per agent, cost, latency, ₹ saved; chat with your data | ⏳ Next |
 
 Optional later: React visual flow builder, Shopify sync, gamification.
 
@@ -38,6 +38,7 @@ Optional later: React visual flow builder, Shopify sync, gamification.
 | GitHub Actions | Runs the tests on every push (CI) |
 | Gemini API (free tier), native REST API | LLM for the agents (gemini-3.5-flash, with a fallback model) |
 | openai (Python SDK) | Optional: any OpenAI-compatible provider (Groq, Ollama, ...) |
+| FastAPI, uvicorn | API server for webhooks and the website chat |
 | scikit-learn | Churn, value and RTO models (logistic regression, gradient boosting) |
 | ChromaDB | Vector search for RAG, from Phase 3 |
 
@@ -52,11 +53,20 @@ pip install -r requirements.txt
 
 python -m kotler.seed.generate     # creates data/kotler.db (1,500 customers, ~3,700 orders)
 streamlit run app.py               # opens http://localhost:8501
-pytest                             # 201 tests (also run automatically on GitHub)
+pytest                             # 222 tests (also run automatically on GitHub)
 python -m kotler.ml.pipeline       # train the ML models (the app also does this automatically)
 ```
 
 The app generates the database by itself on first run, so `streamlit run app.py` alone also works.
+
+### Channels (Phase 7)
+
+```bash
+python -m kotler.channels.telegram poll    # Telegram bot (needs TELEGRAM_BOT_TOKEN), no public URL needed
+uvicorn kotler.server:app --port 8000      # API server + demo store with chat widget: http://localhost:8000
+```
+
+Free hosting and WhatsApp setup: [docs/deploy.md](docs/deploy.md).
 
 ### AI features (free Gemini key)
 
@@ -79,6 +89,9 @@ kotler/
   policy.py           store policies: limits enforced in code + the text the AI retrieves
   llm.py              LLM interface: Gemini / any OpenAI-compatible API, plus a fake for tests
   agent/              Agent Studio, generic runtime, tools (shopping + support), policy retrieval, judge, copilot
+  channels/           Telegram / WhatsApp / web adapters around one core: sessions, routing, consent, dedupe
+  server.py           FastAPI: webhooks, /api/chat, widget.js, demo store
+  web/                chat widget script and demo store page
   marketing/          journeys, campaign engine, customer simulator, experiment statistics
   ml/                 feature store, RFM segments, churn/value/RTO models, segment builder, training pipeline
   evals/              real-model evaluations: shopping/quiz agents and the helpdesk agent (checks DB outcomes)
@@ -86,7 +99,7 @@ kotler/
   seed/
     catalog.py        36 products, 28 cities, regional Indian names, ticket templates (English + Hinglish)
     generate.py       realistic data generator with planted patterns
-views/                Streamlit pages: overview, customers, retention, customer intelligence, products, campaigns, shop assistant, agent studio, helpdesk
+views/                Streamlit pages: overview, customers, retention, customer intelligence, products, campaigns, shop assistant, agent studio, helpdesk, channels
 app.py                Streamlit entry point
 tests/                data-integrity and pattern tests
 .github/workflows/    CI: runs pytest on Python 3.11 and 3.13
@@ -103,6 +116,7 @@ Each phase has a write-up explaining *what*, *why* and *how*:
 - [Phase 4: AI Helpdesk & Order Management](docs/phase-4-helpdesk.md)
 - [Phase 5: Customer Intelligence](docs/phase-5-customer-intelligence.md)
 - [Phase 6: Retention journeys & AI campaigns](docs/phase-6-campaigns.md)
+- [Phase 7: Real channels](docs/phase-7-channels.md) · [Deploying](docs/deploy.md)
 
 ## Design
 

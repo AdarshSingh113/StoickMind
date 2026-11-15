@@ -5,3 +5,7 @@ faker>=30
 pytest>=8
 openai>=1.50
 scikit-learn>=1.5
+fastapi>=0.110
+uvicorn>=0.29
+requests>=2.31
+httpx>=0.27

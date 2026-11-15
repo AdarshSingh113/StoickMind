@@ -21,14 +21,15 @@ db.ensure_schema()  # adds tables introduced in later phases to an existing data
 
 # Local secrets (.streamlit/secrets.toml, never committed) -> environment variables.
 try:
-    for key in ("GEMINI_API_KEY", "KOTLER_LLM_MODEL", "KOTLER_LLM_PROVIDER", "KOTLER_LLM_BASE_URL"):
+    for key in ("GEMINI_API_KEY", "KOTLER_LLM_MODEL", "KOTLER_LLM_PROVIDER", "KOTLER_LLM_BASE_URL", "TELEGRAM_BOT_TOKEN",
+                "WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_ALLOWED_NUMBERS"):
         if key in st.secrets:
             os.environ.setdefault(key, str(st.secrets[key]))
 except Exception:  # no secrets file: fine, the key may come from the environment instead
     pass
 
-from views import (agent_studio, campaigns, customers, intelligence, overview, products, retention,  # noqa: E402
-                   shop_assistant, support, ui)
+from views import (agent_studio, campaigns, channels, customers, intelligence, overview, products,  # noqa: E402
+                   retention, shop_assistant, support, ui)
 
 ui.inject_css()
 ui.PAGES.update({
@@ -40,6 +41,7 @@ ui.PAGES.update({
     "products": st.Page(products.render, title="Products", icon=":material/inventory_2:", url_path="products"),
     "campaigns": st.Page(campaigns.render, title="Campaigns", icon=":material/campaign:", url_path="campaigns"),
     "shop": st.Page(shop_assistant.render, title="Shop Assistant", icon=":material/auto_awesome:", url_path="shop"),
+    "channels": st.Page(channels.render, title="Channels", icon=":material/forum:", url_path="channels"),
     "studio": st.Page(agent_studio.render, title="Agent Studio", icon=":material/tune:", url_path="studio"),
     "support": st.Page(support.render, title="Helpdesk", icon=":material/support_agent:", url_path="support"),
 })
@@ -47,10 +49,10 @@ P = ui.PAGES
 nav = st.navigation({
     "Business": [P["overview"], P["customers"], P["retention"], P["intelligence"], P["products"]],
     "Marketing": [P["campaigns"]],
-    "AI agents": [P["shop"], P["studio"]],
+    "AI agents": [P["shop"], P["studio"], P["channels"]],
     "Support": [P["support"]],
 })
 
 ui.sidebar_brand()
-ui.sidebar_footer(f"Store: {config.BRAND_NAME}", "Phase 6 · Retention journeys & AI campaigns. Next: real channels (Telegram, WhatsApp).")
+ui.sidebar_footer(f"Store: {config.BRAND_NAME}", "Phase 7 · Telegram, WhatsApp & website chat. Next: evaluation, observability & Ask your data.")
 nav.run()
