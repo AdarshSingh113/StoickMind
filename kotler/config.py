@@ -34,3 +34,21 @@ def llm_api_key() -> str | None:
     """API key from the environment. Locally, put it in .streamlit/secrets.toml
     (app.py copies it into the environment) or export GEMINI_API_KEY."""
     return os.environ.get("GEMINI_API_KEY") or os.environ.get("KOTLER_LLM_API_KEY")
+
+
+# --------------------------------------------------------------- AI cost (Phase 8)
+# ASSUMED list prices in US$ per 1 million tokens: (input, output). The free tier costs ₹0; these numbers answer
+# "what would this cost on the paid tier / at scale?". Check https://ai.google.dev/pricing and override with
+# KOTLER_LLM_PRICES='{"model": [input, output]}' if they differ.
+LLM_PRICES_USD_PER_M: dict[str, tuple[float, float]] = {
+    "gemini-3.5-flash": (0.30, 2.50),
+    "gemini-3.1-flash-lite": (0.10, 0.40),
+    "fake": (0.0, 0.0),
+}
+try:
+    import json as _json
+    LLM_PRICES_USD_PER_M.update({k: tuple(v) for k, v in _json.loads(os.environ.get("KOTLER_LLM_PRICES", "{}")).items()})
+except ValueError:
+    pass
+DEFAULT_PRICE_USD_PER_M = (0.30, 2.50)
+USD_INR = float(os.environ.get("KOTLER_USD_INR", "88"))

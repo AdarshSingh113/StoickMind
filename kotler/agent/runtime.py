@@ -26,6 +26,7 @@ from kotler.agent.prompts import compose_system_prompt
 from kotler.agent.studio import AgentConfig
 from kotler.agent.tools import TOOLS, WRITE_TOOLS, ToolContext, execute_tool, get_my_profile, to_json
 from kotler.llm import LLMError
+from kotler.obs import trace as obs
 
 HISTORY_TURNS = 10     # previous user/assistant messages included as memory
 
@@ -58,6 +59,7 @@ class Agent:
                  conversation_id: int | None = None, channel: str = "web"):
         self.config = config
         self.llm = llm
+        self.channel = channel
         self.ctx = ToolContext(customer_id=customer_id, agent_slug=config.slug)
         self.allowed = [t for t in config.tools if t in TOOLS]
         self.schemas = [TOOLS[t][1] for t in self.allowed]
@@ -67,6 +69,19 @@ class Agent:
 
     # ------------------------------------------------------------ public
     def reply(self, user_text: str) -> AgentTurn:
+        """One customer message -> one answer, recorded as one trace (LLM calls, tools, guards inside it)."""
+        with obs.trace("agent_turn", self.config.slug, self.conversation_id, self.channel, user_text) as t:
+            self._trace = t
+            turn = self._reply(user_text)
+            t.output, t.error = turn.reply, turn.error
+            t.escalated = any(x.name == "escalate_to_human" and x.result.get("escalated") for x in turn.tools)
+            t.status = ("error" if turn.error else "fail_safe" if any(g.startswith("fail-safe") for g in turn.guard)
+                        else "corrected" if turn.guard else "ok")
+            t.meta = {"tools": [x.name for x in turn.tools], "guards": turn.guard, "llm_calls": turn.llm_calls,
+                      "version": self.config.version}
+        return turn
+
+    def _reply(self, user_text: str) -> AgentTurn:
         started = time.perf_counter()
         history = self._history()          # load BEFORE saving the new message
         self._save("user", user_text)
@@ -104,6 +119,7 @@ class Agent:
                         # One chance to make the claim true (call the tool) or take it back.
                         corrected = True
                         turn.guard.append("claim check: " + "; ".join(issues))
+                        self._trace.span("guard", "claim_check", ok=False, detail="; ".join(issues))
                         messages.append({"role": "assistant", "content": turn.reply})
                         messages.append({"role": "user", "content": (
                             f"[Automatic check failed: {'; '.join(issues)}. Call the right tool now (for products and "
@@ -126,6 +142,7 @@ class Agent:
                 turn.reply = "Sorry, I couldn't put an answer together. Could you rephrase that?"
             elif lang in ("hinglish", "hi") and detect_language(turn.reply) == "en":
                 turn.reply = self._rewrite_language(turn, lang)
+                self._trace.span("guard", "language_rewrite", ok=detect_language(turn.reply) == lang, detail=lang)
         except LLMError as e:
             turn.reply, turn.error = e.user_message, str(e)[:500]
 
@@ -136,10 +153,15 @@ class Agent:
 
     def _run_tool(self, name: str, arguments: dict, turn: AgentTurn, messages: list | None = None,
                   call_id: str | None = None) -> dict:
+        started = time.perf_counter()
         if name not in self.allowed:
             result = {"error": f"Tool '{name}' is not available to this agent."}
         else:
             result = execute_tool(name, arguments, self.ctx)
+        if getattr(self, "_trace", None):
+            err = result.get("error") if isinstance(result, dict) else None
+            self._trace.span("tool", name, int((time.perf_counter() - started) * 1000), ok=not err,
+                             detail=str(err or "")[:300])
         turn.tools.append(ToolTrace(name, arguments, result))
         self._save("tool", to_json(result), tool_name=name, tool_args=to_json(arguments))
         if messages is not None:
@@ -150,6 +172,8 @@ class Agent:
         """The model still claims an action it didn't take. Never send that. Fail towards a human:
         escalate for real (if this agent may), and tell the customer honestly what happens next."""
         turn.guard.append("fail-safe: " + "; ".join(issues))
+        if getattr(self, "_trace", None):
+            self._trace.span("guard", "fail_safe", ok=False, detail="; ".join(issues))
         if all("price" in i for i in issues):  # shopping agents: never send invented prices
             return ("Sorry, I want to give you exact prices, and I couldn't look them up just now. "
                     "Could you send your message again?")

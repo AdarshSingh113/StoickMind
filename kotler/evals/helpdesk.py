@@ -210,6 +210,8 @@ def run(only: set[str] | None = None, delay: float = 2.0, judge: bool = True) ->
     for k, (ok, total) in summary["by_check"].items():
         print(f"  {k:<20} {ok}/{total}")
     print(f"Saved to {path}")
+    from kotler.obs.evals import save_run
+    save_run("helpdesk", config.LLM_MODEL, rows, source=path.name)  # into the REAL db (the copy is restored above)
     return summary
 
 

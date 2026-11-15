@@ -302,3 +302,36 @@ def get_llm() -> GeminiLLM | OpenAICompatLLM | None:
     if not config.llm_api_key():
         return None
     return OpenAICompatLLM() if config.LLM_PROVIDER == "openai" else GeminiLLM()
+
+
+# ------------------------------------------------------------------ observability
+def _instrument(cls, provider: str) -> None:
+    """Wrap `cls.chat` so EVERY call is logged (model, latency, tokens, errors) into the open trace.
+    One choke point = complete coverage: a new feature that calls an LLM is measured without extra code."""
+    from functools import wraps
+
+    from kotler.obs.trace import log_llm_call
+
+    original = cls.chat
+
+    @wraps(original)
+    def chat(self, messages, tools=None, temperature=0.3):
+        self.last_model = None
+        start = time.perf_counter()
+        try:
+            resp = original(self, messages, tools=tools, temperature=temperature)
+        except Exception as e:
+            log_llm_call(provider, getattr(self, "model", None), getattr(self, "model", None),
+                         int((time.perf_counter() - start) * 1000), error=f"{type(e).__name__}: {e}")
+            raise
+        log_llm_call(provider, self.last_model or getattr(self, "model", None), getattr(self, "model", None),
+                     resp.latency_ms or int((time.perf_counter() - start) * 1000),
+                     resp.prompt_tokens, resp.completion_tokens, len(resp.tool_calls))
+        return resp
+
+    cls.chat = chat
+
+
+_instrument(GeminiLLM, "gemini")
+_instrument(OpenAICompatLLM, "openai-compatible")
+_instrument(FakeLLM, "fake")

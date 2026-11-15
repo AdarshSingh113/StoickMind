@@ -147,17 +147,22 @@ def generate_templates(llm, journey: str, offer_pct: int) -> tuple[dict, str]:
         offer = f"{offer_pct}% off with a coupon code" if offer_pct else "no discount"
         prompt = PROMPT.format(goal=journeys.JOURNEYS.get(journey, "Bring customers back to buy again."), offer=offer,
                                offer_ph=", {discount}, {code}" if offer_pct else "")
-        try:
-            resp = llm.chat([{"role": "user", "content": prompt}], tools=None, temperature=0.7)
-            data = json.loads(re.search(r"\{.*\}", resp.content or "", re.S).group(0))
-            out = {}
-            for v in ("A", "B"):
-                out[v] = {"angle": str(data[v].get("angle", ""))[:60],
-                          "en": validate_template(data[v]["en"], bool(offer_pct)),
-                          "hinglish": validate_template(data[v]["hinglish"], bool(offer_pct))}
-            return _with_offer(out, offer_pct), "ai"
-        except (LLMError, InvalidTemplate, AttributeError, KeyError, TypeError, json.JSONDecodeError):
-            pass  # fall through to the hand-written templates
+        from kotler.obs.trace import trace
+        with trace("campaign_templates", journey, input=prompt[:500]) as t:
+            try:
+                resp = llm.chat([{"role": "user", "content": prompt}], tools=None, temperature=0.7)
+                data = json.loads(re.search(r"\{.*\}", resp.content or "", re.S).group(0))
+                out = {}
+                for v in ("A", "B"):
+                    out[v] = {"angle": str(data[v].get("angle", ""))[:60],
+                              "en": validate_template(data[v]["en"], bool(offer_pct)),
+                              "hinglish": validate_template(data[v]["hinglish"], bool(offer_pct))}
+                t.output = json.dumps(out, ensure_ascii=False)
+                return _with_offer(out, offer_pct), "ai"
+            except (LLMError, InvalidTemplate, AttributeError, KeyError, TypeError, json.JSONDecodeError) as e:
+                # fall through to the hand-written templates; the trace remembers why
+                t.status, t.error = "fallback", f"{type(e).__name__}: {e}"
+                t.span("guard", "template_validation", ok=False, detail=str(e))
     return _with_offer(json.loads(json.dumps(FALLBACK[journey])), offer_pct), "fallback"
 
 

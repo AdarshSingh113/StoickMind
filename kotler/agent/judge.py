@@ -79,11 +79,16 @@ def judge_conversation(llm, agent: AgentConfig, conversation_id: int, save: bool
         return {"achieved": False, "score": 1, "reason": "No conversation to judge yet."}
     prompt = JUDGE_PROMPT.format(role=agent.role, name=agent.name, goal=agent.goal,
                                  success_criteria=agent.success_criteria, transcript=format_transcript(rows))
-    try:
-        resp = llm.chat([{"role": "user", "content": prompt}], tools=None, temperature=0)
-    except LLMError as e:
-        return {"achieved": False, "score": 1, "reason": e.user_message, "error": str(e)[:300]}
-    verdict = parse_verdict(resp.content)
+    from kotler.obs.trace import trace
+    with trace("judge", agent.slug, conversation_id) as t:
+        try:
+            resp = llm.chat([{"role": "user", "content": prompt}], tools=None, temperature=0)
+        except LLMError as e:
+            t.status, t.error = "error", str(e)[:300]
+            return {"achieved": False, "score": 1, "reason": e.user_message, "error": str(e)[:300]}
+        verdict = parse_verdict(resp.content)
+        t.output = f"achieved={verdict['achieved']} score={verdict['score']}: {verdict['reason']}"
+        t.status = "error" if verdict.get("invalid") else "ok"
     if save and not verdict.get("invalid"):
         with db.get_conn() as conn:
             conn.execute("INSERT INTO conversation_scores (conversation_id, agent_slug, agent_version, achieved, "

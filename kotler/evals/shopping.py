@@ -203,6 +203,8 @@ def run(only: set[str] | None = None, delay: float = 4.0) -> dict:
     for name, (ok, total) in summary["by_check"].items():
         print(f"  {name:<10} {ok}/{total}")
     print(f"Saved to {path}")
+    from kotler.obs.evals import save_run
+    save_run("shopping", config.LLM_MODEL, rows, source=path.name)  # eval history (AI performance page)
     return summary
 
 

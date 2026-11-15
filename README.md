@@ -22,7 +22,7 @@ which COD orders will come back undelivered, and dashboards that measure everyth
 | 5 | **Customer Intelligence (CDP + ML)** | RFM segments, churn and 90-day value models, **COD RTO predictor** with rupee-based threshold, plain-English segment builder with SQL guardrails | ✅ Done |
 | 6 | **Retention + AI Campaigns** | 4 journeys, AI-written A/B messages (English + Hinglish) with placeholder safety, marketing guardrails, holdout groups, uplift / significance / ROI on simulated customers | ✅ Done |
 | 7 | **Real channels** | Same agents on a Telegram bot, WhatsApp test number and a one-line website chat widget; signed webhooks, idempotency, consent, rate limits, real campaign delivery | ✅ Done |
-| 8 | **Evaluation, observability, "Ask your data"** | Success rates per agent, cost, latency, ₹ saved; chat with your data | ⏳ Next |
+| 8 | **Evaluation, observability, "Ask your data"** | Tracing of every LLM call, tool and guard; per-agent latency / safety / quality / cost; eval history with regression diffs; ₹ impact tagged measured / modelled / simulated; **Ask your data** with column-level privacy and number-checked answers | ✅ Done |
 
 Optional later: React visual flow builder, Shopify sync, gamification.
 
@@ -53,7 +53,7 @@ pip install -r requirements.txt
 
 python -m kotler.seed.generate     # creates data/kotler.db (1,500 customers, ~3,700 orders)
 streamlit run app.py               # opens http://localhost:8501
-pytest                             # 222 tests (also run automatically on GitHub)
+pytest                             # 253 tests (also run automatically on GitHub)
 python -m kotler.ml.pipeline       # train the ML models (the app also does this automatically)
 ```
 
@@ -76,8 +76,8 @@ Get a key at [aistudio.google.com](https://aistudio.google.com), then create `.s
 GEMINI_API_KEY = "your-key"
 ```
 
-It's git-ignored, so the key never reaches GitHub. Run the agent evaluation with
-`GEMINI_API_KEY=your-key python -m kotler.evals.shopping`.
+It's git-ignored, so the key never reaches GitHub. Run the evaluations with `GEMINI_API_KEY=your-key python -m kotler.evals.shopping` (also `helpdesk`,
+`ask_data`). Results appear on the **AI performance** page.
 
 ## Project structure
 
@@ -92,14 +92,16 @@ kotler/
   channels/           Telegram / WhatsApp / web adapters around one core: sessions, routing, consent, dedupe
   server.py           FastAPI: webhooks, /api/chat, widget.js, demo store
   web/                chat widget script and demo store page
+  obs/                tracing (traces + spans), metrics and cost, eval history, business impact
+  analytics/          Ask your data: guarded text-to-SQL, chart validation, grounded answers
   marketing/          journeys, campaign engine, customer simulator, experiment statistics
   ml/                 feature store, RFM segments, churn/value/RTO models, segment builder, training pipeline
-  evals/              real-model evaluations: shopping/quiz agents and the helpdesk agent (checks DB outcomes)
+  evals/              real-model evaluations: shopping/quiz, helpdesk (DB outcomes), ask-your-data (execution match)
   config.py           settings from environment variables
   seed/
     catalog.py        36 products, 28 cities, regional Indian names, ticket templates (English + Hinglish)
     generate.py       realistic data generator with planted patterns
-views/                Streamlit pages: overview, customers, retention, customer intelligence, products, campaigns, shop assistant, agent studio, helpdesk, channels
+views/                Streamlit pages: overview, customers, retention, customer intelligence, products, campaigns, shop assistant, agent studio, helpdesk, channels, AI performance, ask your data
 app.py                Streamlit entry point
 tests/                data-integrity and pattern tests
 .github/workflows/    CI: runs pytest on Python 3.11 and 3.13
@@ -117,6 +119,7 @@ Each phase has a write-up explaining *what*, *why* and *how*:
 - [Phase 5: Customer Intelligence](docs/phase-5-customer-intelligence.md)
 - [Phase 6: Retention journeys & AI campaigns](docs/phase-6-campaigns.md)
 - [Phase 7: Real channels](docs/phase-7-channels.md) · [Deploying](docs/deploy.md)
+- [Phase 8: Evaluation, observability & Ask your data](docs/phase-8-evaluation-observability.md)
 
 ## Design
 

@@ -132,6 +132,16 @@ def _parse(text: str | None) -> dict:
 
 def build_segment(llm, request: str) -> dict:
     """Natural language -> SQL -> customers. Returns sql, explanation, rows, attempts, error."""
+    from kotler.obs.trace import trace
+    with trace("segment_builder", "segment_builder", input=request) as t:
+        out = _build_segment(llm, request)
+        t.status = "error" if out["error"] else ("corrected" if out["attempts"] > 1 else "ok")
+        t.error, t.output = out["error"], f"{len(out['rows'])} customers"
+        t.meta = {"sql": out["sql"], "attempts": out["attempts"]}
+        return out
+
+
+def _build_segment(llm, request: str) -> dict:
     cols = "\n".join(f"- {c}: {d}" for c, d in COLUMNS.items())
     messages = [{"role": "user", "content": PROMPT.format(columns=cols, request=request)}]
     out = {"request": request, "sql": "", "explanation": "", "rows": pd.DataFrame(), "attempts": 0, "error": None}
