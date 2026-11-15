@@ -12,6 +12,8 @@ Channel adapters only translate (their JSON in, their API out). Everything else 
                run twice, so each update id is processed exactly once.
 - RATE LIMIT   max 12 messages per user per minute: protects the free LLM quota from one chatty user.
 - CONSENT      "STOP" opts out of marketing (campaigns skip them); "START" opts back in.
+- HANDOFF      a person can TAKE OVER a chat from the dashboard inbox (handler = 'human'): the AI stays silent
+               until it's handed back. Chats where the AI escalated are flagged needs_human.
 """
 
 from __future__ import annotations
@@ -55,9 +57,21 @@ WELCOME = ("Hi{name}! I'm the Glow & Co. assistant.\n\n"
            "STOP (no marketing messages).")
 
 
+# Columns added after Phase 7. Existing databases get them with ALTER TABLE: a tiny "migration".
+MIGRATIONS = {
+    "channel_users": {"handler": "TEXT NOT NULL DEFAULT 'ai'", "needs_human": "INTEGER NOT NULL DEFAULT 0",
+                      "handoff_at": "TEXT", "last_read_id": "INTEGER NOT NULL DEFAULT 0"},
+}
+
+
 def ensure_tables() -> None:
     with db.get_conn() as conn:
         conn.executescript(SCHEMA)
+        for table, cols in MIGRATIONS.items():
+            have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+            for col, ddl in cols.items():
+                if col not in have:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
 
 
 def _now() -> str:
@@ -79,6 +93,7 @@ class Outgoing:
     agent_slug: str | None = None
     duplicate: bool = False
     rate_limited: bool = False
+    human: bool = False        # a person is handling this chat: the AI stayed silent
 
 
 def _customer_for_phone(phone: str) -> int | None:
@@ -201,6 +216,10 @@ def handle_incoming(msg: Incoming, llm=None) -> Outgoing:
             name = (get_agent(slug).name if get_agent(slug) else slug)
             return reply([f"You're now chatting with {name}. What would you like to know?"], slug)
         text, session = rest, get_session(msg.channel, msg.external_id)
+    if session.get("handler") == "human":
+        # A person took over in the inbox. Log the message (done above), stay silent, flag it for them.
+        _update_session(msg.channel, msg.external_id, needs_human=1)
+        return Outgoing(human=True)
     if not text:
         return reply(["I can only read text messages for now. Please type your question."])
 
@@ -218,8 +237,10 @@ def handle_incoming(msg: Incoming, llm=None) -> Outgoing:
     agent.ctx.verify_attempts = session["verify_attempts"]
     turn = agent.reply(text)
     # Persist what the agent learned (verification!) and which conversation/agent we're in.
+    escalated = any(t.name == "escalate_to_human" and t.result.get("escalated") for t in turn.tools)
     _update_session(msg.channel, msg.external_id, agent_slug=slug, conversation_id=agent.conversation_id,
-                    customer_id=agent.ctx.customer_id, verify_attempts=agent.ctx.verify_attempts)
+                    customer_id=agent.ctx.customer_id, verify_attempts=agent.ctx.verify_attempts,
+                    **({"needs_human": 1} if escalated else {}))
     return reply(split_message(turn.reply, MAX_CHARS.get(msg.channel, 4000)), slug)
 
 

@@ -24,7 +24,21 @@ which COD orders will come back undelivered, and dashboards that measure everyth
 | 7 | **Real channels** | Same agents on a Telegram bot, WhatsApp test number and a one-line website chat widget; signed webhooks, idempotency, consent, rate limits, real campaign delivery | ✅ Done |
 | 8 | **Evaluation, observability, "Ask your data"** | Tracing of every LLM call, tool and guard; per-agent latency / safety / quality / cost; eval history with regression diffs; ₹ impact tagged measured / modelled / simulated; **Ask your data** with column-level privacy and number-checked answers | ✅ Done |
 
-Optional later: React visual flow builder, Shopify sync, gamification.
+### The new web app (React)
+
+The product's screens are being rebuilt as a real web app on top of the same Python code
+([learning notes](docs/r1-r2-react-app.md)):
+
+| Milestone | Screens | Status |
+|---|---|---|
+| R1 | Login, app shell (Ctrl+K, dark mode, mobile), **Overview** | ✅ Done |
+| R2 | **Live Inbox**: WhatsApp, Telegram and website chats in one place, human takeover | ✅ Done |
+| R3 | Customers + Customer 360 | ⏳ Next |
+| R4 | Ask your data + AI performance | |
+| R5 | Campaigns + Helpdesk approvals | |
+| R6 | Agent Studio | |
+
+Optional later: visual journey builder, Shopify sync, gamification.
 
 ## Tech stack (all free)
 
@@ -32,13 +46,15 @@ Optional later: React visual flow builder, Shopify sync, gamification.
 |---|---|
 | Python 3.11+ | Everything |
 | SQLite | Store data (one file, zero setup) |
-| Streamlit | Dashboard UI |
+| Streamlit | Classic dashboard UI |
+| React, TypeScript, Vite | The web app (frontend/) |
+| Tailwind CSS, Recharts, TanStack Query | Styling, charts, server-state caching |
+| FastAPI | API, webhooks, Server-Sent Events, serves the app |
 | pandas, Altair | Analysis and charts |
 | Faker | Street addresses (names come from our own region-aware lists) |
 | GitHub Actions | Runs the tests on every push (CI) |
 | Gemini API (free tier), native REST API | LLM for the agents (gemini-3.5-flash, with a fallback model) |
 | openai (Python SDK) | Optional: any OpenAI-compatible provider (Groq, Ollama, ...) |
-| FastAPI, uvicorn | API server for webhooks and the website chat |
 | scikit-learn | Churn, value and RTO models (logistic regression, gradient boosting) |
 | ChromaDB | Vector search for RAG, from Phase 3 |
 
@@ -53,17 +69,26 @@ pip install -r requirements.txt
 
 python -m kotler.seed.generate     # creates data/kotler.db (1,500 customers, ~3,700 orders)
 streamlit run app.py               # opens http://localhost:8501
-pytest                             # 253 tests (also run automatically on GitHub)
+pytest                             # 272 tests (also run automatically on GitHub)
 python -m kotler.ml.pipeline       # train the ML models (the app also does this automatically)
 ```
 
 The app generates the database by itself on first run, so `streamlit run app.py` alone also works.
 
+### The web app (React)
+
+```bash
+uvicorn kotler.server:app --reload --port 8000    # the API (terminal 1)
+cd frontend && npm install && npm run dev         # the app, http://localhost:5173 (terminal 2); password: kotler
+```
+
+Or build once (`cd frontend && npm run build`) and open http://localhost:8000: the API serves the app itself.
+
 ### Channels (Phase 7)
 
 ```bash
 python -m kotler.channels.telegram poll    # Telegram bot (needs TELEGRAM_BOT_TOKEN), no public URL needed
-uvicorn kotler.server:app --port 8000      # API server + demo store with chat widget: http://localhost:8000
+uvicorn kotler.server:app --port 8000      # API + dashboard; demo store with chat widget: http://localhost:8000/store
 ```
 
 Free hosting and WhatsApp setup: [docs/deploy.md](docs/deploy.md).
@@ -90,7 +115,8 @@ kotler/
   llm.py              LLM interface: Gemini / any OpenAI-compatible API, plus a fake for tests
   agent/              Agent Studio, generic runtime, tools (shopping + support), policy retrieval, judge, copilot
   channels/           Telegram / WhatsApp / web adapters around one core: sessions, routing, consent, dedupe
-  server.py           FastAPI: webhooks, /api/chat, widget.js, demo store
+  server.py           FastAPI: webhooks, /api/chat, widget.js, demo store, and serves the React app
+  api/                dashboard API: login (signed cookie), overview, inbox (takeover, live stream)
   web/                chat widget script and demo store page
   obs/                tracing (traces + spans), metrics and cost, eval history, business impact
   analytics/          Ask your data: guarded text-to-SQL, chart validation, grounded answers
@@ -102,7 +128,9 @@ kotler/
     catalog.py        36 products, 28 cities, regional Indian names, ticket templates (English + Hinglish)
     generate.py       realistic data generator with planted patterns
 views/                Streamlit pages: overview, customers, retention, customer intelligence, products, campaigns, shop assistant, agent studio, helpdesk, channels, AI performance, ask your data
-app.py                Streamlit entry point
+app.py                Streamlit entry point (classic dashboard)
+frontend/             React + TypeScript app: Vite, Tailwind, TanStack Query, Recharts (src/pages, src/components)
+Dockerfile            one image: builds the React app, serves everything from Python
 tests/                data-integrity and pattern tests
 .github/workflows/    CI: runs pytest on Python 3.11 and 3.13
 docs/                 learning notes for each phase
@@ -120,6 +148,7 @@ Each phase has a write-up explaining *what*, *why* and *how*:
 - [Phase 6: Retention journeys & AI campaigns](docs/phase-6-campaigns.md)
 - [Phase 7: Real channels](docs/phase-7-channels.md) · [Deploying](docs/deploy.md)
 - [Phase 8: Evaluation, observability & Ask your data](docs/phase-8-evaluation-observability.md)
+- [R1 + R2: React app, login, Overview, live Inbox](docs/r1-r2-react-app.md)
 
 ## Design
 

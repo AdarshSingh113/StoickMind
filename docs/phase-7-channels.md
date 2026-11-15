@@ -104,7 +104,7 @@ only chats that are linked **and** opted in receive it. Everyone else in the cam
 
 ```bash
 python -m kotler.channels.telegram poll        # Telegram, no public URL needed
-uvicorn kotler.server:app --port 8000          # website chat: open http://localhost:8000
+uvicorn kotler.server:app --port 8000          # website chat: open http://localhost:8000/store
 ```
 
 Hosting for free: see [deploy.md](deploy.md).

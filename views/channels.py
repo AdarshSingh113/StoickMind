@@ -64,7 +64,7 @@ def _setup():
         st.markdown(_status(True, "Ready", ""), unsafe_allow_html=True)
         st.markdown("Run or deploy the API server, then add to any page:")
         st.code('<script src="https://YOUR-APP/widget.js" defer></script>', language="html")
-        st.markdown("A demo store with the widget is served at `https://YOUR-APP/`.")
+        st.markdown("A demo store with the widget is served at `https://YOUR-APP/store`.")
     st.caption("The dashboard (Streamlit) and the API server must share one database to see the same conversations. "
                "See docs/deploy.md for setups that do.")
 

@@ -18,3 +18,47 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    needs: [pytest, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -r requirements.txt
+      - run: cd frontend && npm ci && npm run build
+      - run: npm install -g playwright@1.63.0 && npx -y playwright@1.63.0 install --with-deps chromium
+      - name: Start the API server (it serves the built app)
+        run: |
+          python -m kotler.seed.generate
+          nohup uvicorn kotler.server:app --port 8000 > server.log 2>&1 &
+          timeout 60 bash -c 'until curl -s localhost:8000/health | grep -q ok; do sleep 1; done'
+      - name: Click through the real app
+        run: cd frontend && NODE_PATH=$(npm root -g) node e2e/smoke.mjs http://localhost:8000
+      - if: failure()
+        run: cat server.log

@@ -4,11 +4,12 @@ Kotler AI has two programs:
 
 | Program | Command | What it is for |
 |---|---|---|
-| Dashboard | `streamlit run app.py` | You, the operator: CRM, agents, campaigns, channels |
-| API server | `uvicorn kotler.server:app` | The outside world: Telegram/WhatsApp webhooks, website chat |
+| **API server + app** | `uvicorn kotler.server:app` | The React dashboard (Overview, live Inbox), Telegram/WhatsApp webhooks, website chat |
+| Classic dashboard | `streamlit run app.py` | Screens not yet moved to React (Customers, Ask your data, Campaigns...) |
 
-Both read the same SQLite file (`data/kotler.db`, or `KOTLER_DB_PATH`). **They only see the same conversations
-when they run on the same machine with the same file.** Pick a setup below.
+The API server serves the React app itself (after `cd frontend && npm run build`), so **deploying the server
+deploys the dashboard too, on the same database as the chats.** Streamlit reads the same SQLite file
+(`data/kotler.db`, or `KOTLER_DB_PATH`) only when it runs on the same machine.
 
 ## Secrets
 
@@ -24,6 +25,8 @@ Never commit them. Locally: `.streamlit/secrets.toml` (git-ignored) or environme
 | `WHATSAPP_VERIFY_TOKEN` | Meta's webhook handshake (any random string) |
 | `WHATSAPP_ALLOWED_NUMBERS` | comma-separated test numbers, e.g. `919812345678` |
 | `KOTLER_ALLOWED_ORIGINS` | sites allowed to use the chat widget (default `*`) |
+| `KOTLER_ADMIN_PASSWORD` | dashboard login. **Required in production** (login is disabled without it) |
+| `KOTLER_SECRET_KEY` | optional: signs login cookies (default: derived from the password) |
 
 Generate a random secret: `python -c "import secrets; print(secrets.token_urlsafe(24))"`
 
@@ -50,12 +53,13 @@ It runs while the terminal runs. Great for learning and demos.
 
 ```bash
 pip install -r requirements.txt
+(cd frontend && npm ci && npm run build)
 uvicorn kotler.server:app --host 0.0.0.0 --port 8000 &
 streamlit run app.py
 ```
 
 3. In the **Ports** tab, set port 8000 to *Public* and copy its URL.
-4. Website chat: open that URL. Telegram webhook:
+4. Dashboard: open that URL and log in. Demo store with the website chat: `/store`. Telegram webhook:
 
 ```bash
 python -m kotler.channels.telegram set-webhook https://YOUR-URL/webhooks/telegram
@@ -65,9 +69,13 @@ Same machine, same database: the dashboard sees every conversation. Codespaces s
 
 ## Option C: Render free web service (always-on URL)
 
-1. render.com → **New → Web Service** → connect the repo.
-2. Build: `pip install -r requirements.txt`. Start: `uvicorn kotler.server:app --host 0.0.0.0 --port $PORT`.
-3. Add the secrets above under **Environment**.
+1. render.com → **New → Web Service** → connect the repo → Render detects the **Dockerfile**: choose it.
+   (The image builds the React app with Node, then serves everything from Python.)
+2. Add the secrets above under **Environment**, at least `KOTLER_ADMIN_PASSWORD` and `GEMINI_API_KEY`.
+3. Open `https://YOUR-APP.onrender.com`, log in.
+
+The Dockerfile hasn't been built in this project's CI yet (no Docker there); if Render reports a build error,
+the message names the failing line.
 4. Point Telegram (`set-webhook`) and Meta (webhook URL `https://YOUR-APP.onrender.com/webhooks/whatsapp`,
    verify token = `WHATSAPP_VERIFY_TOKEN`, subscribe to **messages**) at it.
 

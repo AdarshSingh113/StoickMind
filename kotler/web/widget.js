@@ -67,9 +67,31 @@
     fetch(API, { method: "POST", headers: { "Content-Type": "application/json" },
                  body: JSON.stringify({ session_id: sessionId(), message: text }) })
       .then(function (r) { return r.json(); })
-      .then(function (d) { typing.remove(); (d.replies || ["Sorry, something went wrong."]).forEach(function (t) { add(t, "bot"); }); })
+      .then(function (d) {
+        typing.remove();
+        if (d.last_id) lastId = Math.max(lastId, d.last_id);
+        if (d.human && !(d.replies || []).length) {
+          if (!humanNoted) { humanNoted = true; add("A member of our team is looking at this and will reply here.", "bot"); }
+          return;
+        }
+        (d.replies || ["Sorry, something went wrong."]).forEach(function (t) { add(t, "bot"); });
+      })
       .catch(function () { typing.remove(); add("Sorry, I couldn't connect. Please try again.", "bot"); });
   }
+
+  // A person can take over this chat from the Kotler inbox. Their replies can't be pushed to a plain web page,
+  // so while the panel is open we ask for new ones every 4 seconds (cheap: one indexed query).
+  var lastId = 0, humanNoted = false;
+  function poll() {
+    if (panel.style.display !== "flex" || !lastId) return;
+    fetch(API + "/updates?session_id=" + encodeURIComponent(sessionId()) + "&after=" + lastId)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        (d.messages || []).forEach(function (m) { add(m.text, "bot"); });
+        if (d.last_id) lastId = Math.max(lastId, d.last_id);
+      }).catch(function () {});
+  }
+  setInterval(poll, 4000);
 
   var greeted = false;
   btn.onclick = function () {

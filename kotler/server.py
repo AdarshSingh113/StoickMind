@@ -4,9 +4,12 @@ Run locally:   uvicorn kotler.server:app --reload --port 8000     (then open htt
 Free hosting:  see docs/deploy.md (Render / Codespaces)
 
 Endpoints
-  GET  /                      demo storefront with the chat widget
+  GET  /                      the dashboard (React app, built into frontend/dist), needs login
+  /api/v1/...                 dashboard API (kotler/api): auth, overview, inbox
+  GET  /store                 demo storefront with the chat widget
   GET  /widget.js             embeddable chat widget: <script src="https://YOUR-APP/widget.js" defer></script>
   POST /api/chat              website chat (the widget calls this)
+  GET  /api/chat/updates      messages a PERSON sent to this web chat from the inbox (the widget polls)
   POST /webhooks/telegram     Telegram updates (checked with the secret token)
   GET  /webhooks/whatsapp     Meta's verification handshake
   POST /webhooks/whatsapp     WhatsApp messages (checked with the HMAC signature)
@@ -28,13 +31,15 @@ from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 
 from kotler import config, db
+from kotler.api import auth, inbox, overview
 from kotler.channels import core, telegram, whatsapp
 
 WEB_DIR = Path(__file__).with_name("web")
+DIST_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"   # the built React app
 SESSION_ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 
 
@@ -62,11 +67,38 @@ app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in os.environ.
                    allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
 
 
+app.include_router(overview.router)
+app.include_router(inbox.router)
+
+
 @app.get("/health")
 def health() -> dict:
     from kotler.llm import get_llm
     return {"ok": True, "llm_configured": get_llm() is not None, "telegram": bool(telegram.token()),
-            "whatsapp": bool(os.environ.get("WHATSAPP_ACCESS_TOKEN"))}
+            "whatsapp": bool(os.environ.get("WHATSAPP_ACCESS_TOKEN")), "frontend_built": DIST_DIR.exists()}
+
+
+# ------------------------------------------------------------------ dashboard login
+class LoginIn(BaseModel):
+    password: str = Field(..., max_length=200)
+
+
+@app.post("/api/v1/auth/login")
+def login(body: LoginIn, request: Request, response: Response) -> dict:
+    auth.login(request, response, body.password)
+    return {"ok": True}
+
+
+@app.post("/api/v1/auth/logout")
+def logout(response: Response) -> dict:
+    auth.logout(response)
+    return {"ok": True}
+
+
+@app.get("/api/v1/auth/me")
+def me(request: Request) -> dict:
+    return {"user": auth.require_user(request), "brand": config.BRAND_NAME,
+            "default_password": auth.using_default_password()}
 
 
 # ------------------------------------------------------------------ web chat
@@ -80,7 +112,24 @@ def chat(body: ChatIn) -> dict:
     if not SESSION_ID.match(body.session_id):
         raise HTTPException(400, "Invalid session id.")
     out = core.handle_incoming(core.Incoming("web", body.session_id, body.message))
-    return {"replies": out.texts, "agent": out.agent_slug, "rate_limited": out.rate_limited}
+    return {"replies": out.texts, "agent": out.agent_slug, "rate_limited": out.rate_limited,
+            "human": out.human, "last_id": _last_web_event(body.session_id)}
+
+
+def _last_web_event(session_id: str) -> int:
+    return db.query_one("SELECT COALESCE(MAX(id), 0) AS m FROM channel_events WHERE channel = 'web' AND "
+                        "external_id = ?", (session_id,))["m"]
+
+
+@app.get("/api/chat/updates")
+def chat_updates(session_id: str, after: int = 0) -> dict:
+    """Messages a person sent to this web chat from the inbox (the widget asks every few seconds)."""
+    if not SESSION_ID.match(session_id):
+        raise HTTPException(400, "Invalid session id.")
+    core.ensure_tables()
+    rows = db.query_df("SELECT id, text FROM channel_events WHERE channel = 'web' AND external_id = ? AND id > ? "
+                       "AND direction = 'out' AND agent_slug = 'human' ORDER BY id", (session_id, after))
+    return {"messages": rows.to_dict("records"), "last_id": max([after, *rows.id.tolist()])}
 
 
 @app.get("/widget.js")
@@ -89,7 +138,7 @@ def widget() -> Response:
                     headers={"Cache-Control": "public, max-age=300"})
 
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/store", response_class=HTMLResponse)
 def store() -> str:
     products = db.query_df("SELECT name, category, price, mrp, rating, stock FROM products WHERE is_active = 1 "
                            "ORDER BY rating DESC LIMIT 12").to_dict("records")
@@ -132,3 +181,21 @@ async def whatsapp_webhook(request: Request, background: BackgroundTasks,
         raise HTTPException(403, "Bad signature.")
     background.add_task(whatsapp.process_payload, await request.json())
     return {"ok": True}
+
+
+# ------------------------------------------------------------------ the React app (must be LAST)
+@app.get("/{path:path}", include_in_schema=False)
+def spa(path: str) -> Response:
+    """Serve the built React app. Real files (JS, CSS, fonts) as they are; every other path gets index.html,
+    because the app does its own routing in the browser (/inbox, /overview...)."""
+    if path.startswith(("api/", "webhooks/")):
+        raise HTTPException(404, "Not found.")
+    if not DIST_DIR.exists():
+        return HTMLResponse("<h3>Kotler AI API is running.</h3><p>The dashboard isn't built yet: "
+                            "<code>cd frontend &amp;&amp; npm install &amp;&amp; npm run build</code>. "
+                            "Demo store: <a href='/store'>/store</a></p>")
+    file = (DIST_DIR / path).resolve()
+    if path and file.is_file() and DIST_DIR.resolve() in file.parents:   # no ../ escapes
+        cache = "public, max-age=31536000, immutable" if path.startswith("assets/") else "no-cache"
+        return FileResponse(file, headers={"Cache-Control": cache})
+    return FileResponse(DIST_DIR / "index.html", headers={"Cache-Control": "no-cache"})

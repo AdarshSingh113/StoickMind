@@ -219,7 +219,7 @@ def client(monkeypatch, fake_llm):
 
 def test_health_store_widget(client):
     assert client.get("/health").json()["ok"]
-    page = client.get("/").text
+    page = client.get("/store").text
     assert "Ask our assistant" in page and '<script src="/widget.js"' in page
     assert "textContent" in client.get("/widget.js").text
 

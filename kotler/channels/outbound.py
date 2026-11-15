@@ -25,16 +25,21 @@ def link_chat_to_customer(channel: str, external_id: str, customer_id: int) -> N
                      (customer_id, channel, external_id))
 
 
-def send(channel: str, external_id: str, text: str) -> None:
-    if channel == "telegram":
+def send(channel: str, external_id: str, text: str, author: str = "campaign") -> None:
+    """Send a message WE start (campaign, or a person replying from the inbox) and log it.
+    Website chats have no open connection: the message is stored and the widget picks it up (it polls).
+    Demo chats (external id 'demo-...') are only logged, never sent anywhere."""
+    if channel == "web" or external_id.startswith("demo-"):
+        pass
+    elif channel == "telegram":
         telegram.send_text(external_id, text)
     elif channel == "whatsapp":
         whatsapp.send_text(external_id, text)
     else:
-        raise ValueError("Website chats can't receive messages we start: there is no open connection.")
+        raise ValueError(f"Unknown channel {channel!r}.")
     with db.get_conn() as conn:
         conn.execute("INSERT INTO channel_events (channel, external_id, direction, text, agent_slug, created_at) "
-                     "VALUES (?,?,?,?,?,?)", (channel, external_id, "out", text[:4000], "campaign",
+                     "VALUES (?,?,?,?,?,?)", (channel, external_id, "out", text[:4000], author,
                                               datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
 
 
