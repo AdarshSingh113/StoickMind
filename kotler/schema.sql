@@ -171,3 +171,46 @@ CREATE TABLE IF NOT EXISTS conversation_scores (
     reason           TEXT,
     created_at       TEXT NOT NULL
 );
+
+-- ---------------------------------------------------------------- Phase 4
+-- Every action an AI agent takes on an order is recorded: what, why, how much, and
+-- whether it went through automatically or is waiting for a human.
+CREATE TABLE IF NOT EXISTS order_actions (
+    id               INTEGER PRIMARY KEY,
+    action           TEXT NOT NULL CHECK (action IN ('cancel', 'refund', 'replacement', 'coupon', 'escalation')),
+    status           TEXT NOT NULL CHECK (status IN ('done', 'pending_approval', 'approved', 'rejected')),
+    order_id         INTEGER REFERENCES orders(id),
+    customer_id      INTEGER REFERENCES customers(id),
+    conversation_id  INTEGER REFERENCES conversations(id),
+    agent_slug       TEXT,
+    amount           REAL,
+    reason           TEXT,
+    details          TEXT,              -- JSON
+    created_at       TEXT NOT NULL,
+    decided_at       TEXT,
+    decided_by       TEXT               -- 'auto' or the human reviewer
+);
+CREATE INDEX IF NOT EXISTS idx_actions_status ON order_actions(status);
+CREATE INDEX IF NOT EXISTS idx_actions_order ON order_actions(order_id);
+
+CREATE TABLE IF NOT EXISTS coupons_issued (
+    code             TEXT PRIMARY KEY,
+    customer_id      INTEGER NOT NULL REFERENCES customers(id),
+    pct              INTEGER NOT NULL CHECK (pct BETWEEN 1 AND 50),
+    reason           TEXT,
+    conversation_id  INTEGER,
+    created_at       TEXT NOT NULL,
+    expires_at       TEXT NOT NULL
+);
+
+-- AI copilot runs on real support tickets: did the AI resolve it or hand it to a human?
+CREATE TABLE IF NOT EXISTS ai_ticket_runs (
+    id               INTEGER PRIMARY KEY,
+    ticket_id        INTEGER NOT NULL REFERENCES support_tickets(id),
+    conversation_id  INTEGER REFERENCES conversations(id),
+    agent_slug       TEXT NOT NULL,
+    outcome          TEXT NOT NULL CHECK (outcome IN ('resolved', 'escalated', 'error')),
+    actions          INTEGER NOT NULL DEFAULT 0,
+    latency_ms       INTEGER,
+    created_at       TEXT NOT NULL
+);

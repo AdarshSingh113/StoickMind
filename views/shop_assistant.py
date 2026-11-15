@@ -140,6 +140,8 @@ def show_turn(t: dict):
         with st.expander(f"Tools used: {len(turn.tools)} · {meta}"):
             if turn.error:
                 st.code(turn.error)
+            for g in getattr(turn, "guard", []):
+                st.warning(f"Safety check fired: {g}", icon=":material/shield:")
             if not turn.tools:
                 st.write("No tools called.")
             for tool in turn.tools:

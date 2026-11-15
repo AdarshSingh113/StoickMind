@@ -18,8 +18,8 @@ which COD orders will come back undelivered, and dashboards that measure everyth
 | 1 | **Database & CRM** | Customers, orders, products, tickets; Customer 360; KPI dashboard; cohort retention | ✅ Done |
 | 2 | **AI Shopping Agent** | Product recommendations from natural language, English and Hinglish, grounded in the real catalogue | ✅ Done |
 | 3 | **Agent Studio** + Skin Quiz agent | Agents as configuration (instructions, goal, success criteria, tools), versions, playground, LLM-as-judge. 26-case real-model eval | ✅ Done |
-| 4 | **AI Helpdesk + Order Management** | Track, cancel-and-save, replace damaged items, refunds within limits, guardrails, human handoff | ⏳ Next |
-| 5 | **Agentic CDP + ML** | RFM, churn, lifetime value, **COD RTO predictor**, plain-English segment builder | |
+| 4 | **AI Helpdesk + Order Management** | Asha: order tracking, cancel-and-save, damaged items, refunds within limits, policy RAG, human approvals and handoff, AI copilot on real tickets | ✅ Done |
+| 5 | **Agentic CDP + ML** | RFM, churn, lifetime value, **COD RTO predictor**, plain-English segment builder | ⏳ Next |
 | 6 | **Retention + AI Campaigns** | Replenishment, win-back and cross-sell journeys; AI-written messages; A/B tests and uplift in ₹ | |
 | 7 | **Real channels** | Telegram bot, WhatsApp test number, embeddable website chat widget | |
 | 8 | **Evaluation, observability, "Ask your data"** | Success rates per agent, cost, latency, ₹ saved; chat with your data | |
@@ -38,7 +38,7 @@ Optional later: React visual flow builder, Shopify sync, gamification.
 | GitHub Actions | Runs the tests on every push (CI) |
 | Gemini API (free tier), native REST API | LLM for the agents (gemini-3.5-flash, with a fallback model) |
 | openai (Python SDK) | Optional: any OpenAI-compatible provider (Groq, Ollama, ...) |
-| scikit-learn | ML, from Phase 4 |
+| scikit-learn | ML, from Phase 5 |
 | ChromaDB | Vector search for RAG, from Phase 3 |
 
 ## Quick start
@@ -52,7 +52,7 @@ pip install -r requirements.txt
 
 python -m kotler.seed.generate     # creates data/kotler.db (1,500 customers, ~3,700 orders)
 streamlit run app.py               # opens http://localhost:8501
-pytest                             # 68 tests (also run automatically on GitHub)
+pytest                             # 136 tests (also run automatically on GitHub)
 ```
 
 The app generates the database by itself on first run, so `streamlit run app.py` alone also works.
@@ -75,14 +75,15 @@ kotler/
   schema.sql          tables: pincodes, products, customers, orders, order_items, support_tickets
   db.py               connection helpers (plain SQL, no ORM)
   crm.py              business metrics and lookups
+  policy.py           store policies: limits enforced in code + the text the AI retrieves
   llm.py              LLM interface: Gemini / any OpenAI-compatible API, plus a fake for tests
-  agent/              Agent Studio: config store, generic runtime, tools, prompts, judge
-  evals/              single- and multi-turn evaluation cases run against the real model
+  agent/              Agent Studio, generic runtime, tools (shopping + support), policy retrieval, judge, copilot
+  evals/              real-model evaluations: shopping/quiz agents and the helpdesk agent (checks DB outcomes)
   config.py           settings from environment variables
   seed/
     catalog.py        36 products, 28 cities, regional Indian names, ticket templates (English + Hinglish)
     generate.py       realistic data generator with planted patterns
-views/                Streamlit pages: overview, customers, retention, products, shop assistant, support
+views/                Streamlit pages: overview, customers, retention, products, shop assistant, agent studio, helpdesk
 app.py                Streamlit entry point
 tests/                data-integrity and pattern tests
 .github/workflows/    CI: runs pytest on Python 3.11 and 3.13
@@ -96,6 +97,7 @@ Each phase has a write-up explaining *what*, *why* and *how*:
 - [Phase 1: Database & CRM](docs/phase-1-database-and-crm.md)
 - [Phase 2: AI Shopping Agent](docs/phase-2-shopping-agent.md)
 - [Phase 3: Agent Studio](docs/phase-3-agent-studio.md)
+- [Phase 4: AI Helpdesk & Order Management](docs/phase-4-helpdesk.md)
 
 ## Design
 

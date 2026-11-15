@@ -37,7 +37,7 @@ ui.PAGES.update({
     "products": st.Page(products.render, title="Products", icon=":material/inventory_2:", url_path="products"),
     "shop": st.Page(shop_assistant.render, title="Shop Assistant", icon=":material/auto_awesome:", url_path="shop"),
     "studio": st.Page(agent_studio.render, title="Agent Studio", icon=":material/tune:", url_path="studio"),
-    "support": st.Page(support.render, title="Support tickets", icon=":material/support_agent:", url_path="support"),
+    "support": st.Page(support.render, title="Helpdesk", icon=":material/support_agent:", url_path="support"),
 })
 P = ui.PAGES
 nav = st.navigation({
@@ -47,5 +47,5 @@ nav = st.navigation({
 })
 
 ui.sidebar_brand()
-ui.sidebar_footer(f"Store: {config.BRAND_NAME}", "Phase 3 · Agent Studio. Next: Helpdesk & order management agents.")
+ui.sidebar_footer(f"Store: {config.BRAND_NAME}", "Phase 4 · AI Helpdesk & Order Management. Next: customer data platform & ML.")
 nav.run()

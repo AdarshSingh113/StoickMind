@@ -131,6 +131,12 @@ def check(case: Case, turn, catalog: dict) -> dict[str, bool | None]:
     # (or, for follow-ups, it's at least a real product: the name matched our catalogue).
     results["grounded"] = all(p["name"].lower() in blob for p in mentioned) if mentioned else None
     results["in_stock"] = all(p["stock"] > 0 for p in mentioned) if mentioned else None
+    # Invented products: bold names that look like products but aren't in the catalogue.
+    bold = re.findall(r"\*{1,2}([^*\n]{4,80})\*{1,2}", reply)
+    product_words = re.compile(r"wash|serum|cream|moisturi[sz]er|sunscreen|gel|toner|lotion|mask|kit|balm|scrub|cleanser")
+    invented = [b for b in bold if product_words.search(b.lower()) and not any(
+        b.lower().strip() in name or name in b.lower() for name in catalog)]
+    results["no_invented_products"] = not invented if bold else None
     if case.max_price and mentioned:
         results["budget"] = all(p["price"] <= case.max_price for p in mentioned)
     elif case.max_total and mentioned:
@@ -170,11 +176,12 @@ def run(only: set[str] | None = None, delay: float = 4.0) -> dict:
                                error=next((tr.error for tr in turns if tr.error), None),
                                latency_ms=sum(tr.latency_ms for tr in turns),
                                prompt_tokens=sum(tr.prompt_tokens for tr in turns),
-                               completion_tokens=sum(tr.completion_tokens for tr in turns))
+                               completion_tokens=sum(tr.completion_tokens for tr in turns),
+                               guard=[g for tr in turns for g in tr.guard])
         res = check(case, turn, catalog)
         applicable = {k: v for k, v in res.items() if v is not None}
         passed = all(applicable.values()) and not turn.error
-        rows.append({"case": asdict(case), "reply": turn.reply, "tools": [t.name for t in turn.tools],
+        rows.append({"case": asdict(case), "reply": turn.reply, "tools": [t.name for t in turn.tools], "guard": turn.guard,
                      "tool_args": [t.arguments for t in turn.tools], "checks": res, "passed": passed,
                      "error": turn.error, "latency_ms": turn.latency_ms,
                      "tokens": turn.prompt_tokens + turn.completion_tokens})

@@ -52,7 +52,10 @@ CATEGORIES = ["face_wash", "moisturizer", "serum", "sunscreen", "toner", "lip_ca
 
 @dataclass
 class ToolContext:
-    customer_id: int | None = None   # set by OUR code from the session, never by the LLM
+    customer_id: int | None = None      # set by OUR code from the session, never by the LLM
+    conversation_id: int | None = None  # links actions to the conversation that caused them
+    agent_slug: str | None = None
+    verify_attempts: int = 0            # failed guest identity checks in this conversation
 
 
 # ------------------------------------------------------------------ helpers
@@ -360,6 +363,9 @@ TOOLS: dict[str, tuple[Callable[..., dict], dict]] = {
 
 # Tools that change data. The Studio flags them, and they deserve stricter review.
 WRITE_TOOLS = {"save_skin_profile"}
+
+# Phase 4 support tools register themselves into TOOLS / WRITE_TOOLS.
+from kotler.agent import support_tools  # noqa: E402,F401
 
 TOOL_SCHEMAS = [schema for _, schema in TOOLS.values()]
 

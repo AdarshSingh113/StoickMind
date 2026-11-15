@@ -190,7 +190,11 @@ class GeminiLLM:
             if role == "system":
                 system = {"parts": [{"text": m["content"]}]}
             elif role == "user":
-                contents.append({"role": "user", "parts": [{"text": m["content"] or ""}]})
+                part = {"text": m["content"] or ""}
+                if contents and contents[-1]["role"] == "user":
+                    contents[-1]["parts"].append(part)  # e.g. a note right after tool results: same user turn
+                else:
+                    contents.append({"role": "user", "parts": [part]})
             elif role == "assistant":
                 if m.get("_gemini_parts"):  # replay exactly what Gemini sent (keeps thought signatures)
                     parts = m["_gemini_parts"]
