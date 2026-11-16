@@ -94,6 +94,13 @@ def ensure_trained() -> dict:
         has_scores = False
     if stale or not has_scores:
         m = train_all()
+    else:
+        try:   # tables written by an older version lack newer feature columns: rewrite them (no retraining)
+            cols = {r["name"] for r in db.query_df("PRAGMA table_info(customer_features)").to_dict("records")}
+        except Exception:
+            cols = set()
+        if "orders_serum" not in cols:
+            refresh_scores()
     return m
 
 

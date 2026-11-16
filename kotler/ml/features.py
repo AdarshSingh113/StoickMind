@@ -84,6 +84,16 @@ def customer_features(as_of: datetime | None = None) -> pd.DataFrame:
         top = cats.sort_values("units", ascending=False).drop_duplicates("customer_id").set_index("customer_id")
         f["top_category"] = top.category
 
+    # How many orders included each category: lets segments say "bought serums twice but never sunscreen".
+    # (Not used by the ML models, which take a fixed column list: NUMERIC + CATEGORICAL below.)
+    per_cat = db.query_df(f"""
+        SELECT o.customer_id, p.category, COUNT(DISTINCT o.id) AS orders
+        FROM order_items oi JOIN orders o ON o.id = oi.order_id AND o.{LIVE} AND o.created_at < ?
+        JOIN products p ON p.id = oi.product_id GROUP BY o.customer_id, p.category""", (cut,))
+    wide = per_cat.pivot(index="customer_id", columns="category", values="orders") if not per_cat.empty else pd.DataFrame()
+    for cat in PRODUCT_CATEGORIES:
+        f[f"orders_{cat}"] = wide[cat] if cat in wide.columns else 0
+
     t = db.query_df("""SELECT customer_id, COUNT(*) AS tickets,
                               SUM(category IN ('damaged_product', 'allergic_reaction', 'refund')) AS complaints
                        FROM support_tickets WHERE created_at < ? GROUP BY customer_id""", (cut,))
@@ -92,12 +102,15 @@ def customer_features(as_of: datetime | None = None) -> pd.DataFrame:
     c = db.query_df("""SELECT c.id AS customer_id, c.name, c.city, p.tier, c.skin_type, c.preferred_language AS language,
                               c.acquisition_channel AS channel FROM customers c JOIN pincodes p ON p.pincode = c.pincode""")
     f = c.set_index("customer_id").join(f, how="inner")
-    for col in ("tickets", "complaints", "categories_bought"):
+    for col in ("tickets", "complaints", "categories_bought", *(f"orders_{c}" for c in PRODUCT_CATEGORIES)):
         f[col] = f.get(col, 0).fillna(0).astype(int)
     f["top_category"] = f.get("top_category", pd.Series(dtype=str)).fillna("none")
     f.index.name = "customer_id"
     return f.drop(columns=["first_order_at", "last_order_at"]).reset_index()
 
+
+PRODUCT_CATEGORIES = ["face_wash", "moisturizer", "serum", "sunscreen", "toner", "lip_care", "eye_care", "body_care",
+                      "kit"]
 
 NUMERIC = ["recency_days", "frequency", "monetary", "aov", "tenure_days", "orders_30d", "orders_90d", "spend_90d",
            "cod_share", "rto_count", "rto_rate", "returns_count", "coupon_share", "categories_bought", "tickets",

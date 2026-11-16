@@ -49,7 +49,9 @@ COLUMNS = {
     "returns_count": "orders returned after delivery", "coupon_share": "share of orders that used a coupon, 0-1",
     "recency_days": "days since the last order", "tenure_days": "days since the first order",
     "avg_days_between_orders": "average gap between orders in days (NULL for one-order customers)",
-    "categories_bought": "number of different product categories bought",
+    "categories_bought": "how MANY different product categories they bought (a number, not a list)",
+    **{f"orders_{c}": f"number of orders that included a {c.replace('_', ' ')} product (0 = never bought one)"
+       for c in ("face_wash", "moisturizer", "serum", "sunscreen", "toner", "lip_care", "eye_care", "body_care", "kit")},
     "top_category": "most bought category: 'face_wash' | 'moisturizer' | 'serum' | 'sunscreen' | 'toner' | "
                     "'lip_care' | 'eye_care' | 'body_care' | 'kit'",
     "tickets": "support tickets raised", "complaints": "damage / allergy / refund tickets",
@@ -67,6 +69,9 @@ Write ONE SQLite SELECT statement that returns the customers matching the reques
 Rules: query only `customer_features`; always select customer_id first, then the columns used in the filter;
 no other tables; no comments. Interpret vague words sensibly (e.g. "high value" = clv_12m >= 3000,
 "inactive" = recency_days > 60, "big spenders" = monetary >= 5000) and say how you interpreted them.
+
+If the request needs information these columns don't have, don't guess or approximate: reply with "sql": ""
+and say in the explanation what is missing.
 
 Reply with ONLY this JSON:
 {{"sql": "SELECT ...", "explanation": "one sentence in plain English, including any interpretation"}}
@@ -151,6 +156,9 @@ def _build_segment(llm, request: str) -> dict:
             resp = llm.chat(messages, tools=None, temperature=0)
             parsed = _parse(resp.content)
             out.update(parsed)
+            if not parsed["sql"]:   # the model says the data can't answer this: report it, don't retry
+                out["error"] = "Can't build this segment: " + (parsed["explanation"] or "the data doesn't cover it.")
+                return out
             out["rows"] = run_query(parsed["sql"])
             out["error"] = None
             return out
