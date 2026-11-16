@@ -52,13 +52,8 @@ async def lifespan(_app: FastAPI):
 
 def startup() -> None:
     """Make sure a database with the schema and built-in agents exists before the first request."""
-    if not config.DB_PATH.exists():
-        from kotler.seed.generate import generate
-        generate()
-    db.ensure_schema()
-    core.ensure_tables()
-    from kotler.agent.studio import ensure_builtin_agents
-    ensure_builtin_agents()
+    from kotler.bootstrap import prepare
+    prepare()
 
 
 app = FastAPI(title="Kotler AI", description="Channels and chat API for Kotler AI agents.", version="0.7.0",

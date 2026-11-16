@@ -89,6 +89,10 @@ def process_update(update: dict, llm=None) -> int:
 
 def poll(llm=None, max_loops: int | None = None) -> None:
     """Long polling: no public URL needed. Ctrl+C to stop."""
+    if not token():
+        raise SystemExit("Set TELEGRAM_BOT_TOKEN first (the token @BotFather gave you).")
+    from kotler.bootstrap import prepare
+    prepare()  # a fresh machine has no database yet
     try:
         call("deleteWebhook")  # polling and webhooks can't both be active
     except RuntimeError:

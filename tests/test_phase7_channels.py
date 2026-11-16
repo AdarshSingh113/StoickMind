@@ -278,3 +278,25 @@ def test_campaign_delivery_only_to_linked_opted_in(monkeypatch):
     res = outbound.deliver_campaign(cid, "telegram")
     assert res["sent"] == 1 and [s["chat_id"] for s in http.sent()] == ["t1"]
     assert "Reply STOP" in http.sent()[0]["text"]
+
+
+def test_polling_on_a_fresh_machine_creates_the_database(tmp_path, monkeypatch, fake_llm):
+    """A new Codespace has no database: the first Telegram message must still get an answer."""
+    fresh = tmp_path / "fresh" / "kotler.db"
+    monkeypatch.setattr("kotler.config.DB_PATH", fresh)
+    monkeypatch.setattr("kotler.seed.generate.generate",
+                        lambda **kw: generate(n_customers=60, months=3, seed=3, end_date=END, db_path=fresh))
+    batches = [[{"update_id": 1, "message": {"chat": {"id": 7}, "text": "which serum for oily skin?"}}], []]
+    http = FakeHTTP({"getUpdates": lambda: {"ok": True, "result": batches.pop(0) if batches else []},
+                     "getMe": {"ok": True, "result": {"username": "kotler_bot"}}})
+    monkeypatch.setattr(telegram.requests, "post", http)
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "t")
+    telegram.poll(max_loops=2)
+    assert fresh.exists() and http.sent() and "Neem" in http.sent()[0]["text"]
+
+
+def test_polling_without_a_token_explains(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    with pytest.raises(SystemExit, match="TELEGRAM_BOT_TOKEN"):
+        telegram.poll(max_loops=1)
+
