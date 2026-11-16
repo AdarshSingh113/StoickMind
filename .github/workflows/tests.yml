@@ -62,3 +62,50 @@ jobs:
         run: cd frontend && NODE_PATH=$(npm root -g) node e2e/smoke.mjs http://localhost:8000
       - if: failure()
         run: cat server.log
+
+  docker:
+    # Builds the same image Render builds, then runs it the way Render's free plan does (512 MB of memory,
+    # production mode) and checks the real container: app, store, widget, login, data APIs and ML training.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t kotler-ai .
+      - name: Start it like Render's free plan (512 MB)
+        run: |
+          docker run -d --name kotler --memory 512m --memory-swap 512m -p 8000:8000 -e PORT=8000 \
+            -e KOTLER_ADMIN_PASSWORD=ci-test-password kotler-ai
+          timeout 180 bash -c 'until curl -sf localhost:8000/health; do sleep 2; done'
+      - name: Check the running container
+        run: |
+          set -e
+          curl -sf localhost:8000/health | tee /dev/stderr | grep -q '"frontend_built":true'
+          curl -sf localhost:8000/ | grep -q 'id="root"'                         # React app
+          curl -sf localhost:8000/app/customers | grep -q 'id="root"'             # deep links work
+          curl -sf localhost:8000/store | grep -q 'Ask our assistant'             # demo store
+          curl -sf localhost:8000/widget.js | grep -q 'textContent'               # chat widget
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8000/api/v1/overview)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+            -d '{"password":"kotler"}' localhost:8000/api/v1/auth/login)" = 401  # dev password is not accepted
+          curl -sf -c cookies.txt -H 'Content-Type: application/json' \
+            -d '{"password":"ci-test-password"}' localhost:8000/api/v1/auth/login
+          curl -sf -b cookies.txt localhost:8000/api/v1/overview | grep -q net_revenue
+          # Trains the ML models inside 512 MB: the heaviest thing the app does.
+          curl -sf --max-time 300 -b cookies.txt 'localhost:8000/api/v1/customers?page_size=5' | grep -q churn_risk
+          curl -sf -b cookies.txt localhost:8000/api/v1/journeys | grep -q win_back
+          curl -sf -X POST -b cookies.txt localhost:8000/api/v1/inbox/demo | grep -q loaded
+          test "$(docker inspect -f '{{.State.OOMKilled}} {{.RestartCount}}' kotler)" = "false 0"
+      - name: Without a password, production refuses to log in
+        run: |
+          docker run -d --name nopass -p 8001:8000 -e PORT=8000 kotler-ai
+          timeout 180 bash -c 'until curl -sf localhost:8001/health; do sleep 2; done'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+            -d '{"password":"kotler"}' localhost:8001/api/v1/auth/login)" = 503
+      - name: Size and memory
+        if: always()
+        run: |
+          docker images kotler-ai
+          docker stats --no-stream kotler || true
+      - name: Container logs
+        if: failure()
+        run: docker logs kotler || true
