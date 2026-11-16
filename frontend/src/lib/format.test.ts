@@ -41,3 +41,18 @@ it("makes initials", () => {
   expect(initials("Priya Sharma")).toBe("PS");
   expect(initials(null)).toBe("?");
 });
+
+describe("ago", async () => {
+  const { ago, langLabel } = await import("./format");
+  const now = new Date("2026-11-15T12:00:00");
+  it("never says '22 Nov ago'", () => {
+    expect(ago("2026-11-15 11:30:00", now)).toBe("30m ago");
+    expect(ago("2026-11-12 12:00:00", now)).toBe("3d ago");
+    expect(ago("2025-11-22 10:00:00", now)).toBe("on 22 Nov 2025");
+    expect(ago(null, now)).toBe("");
+  });
+  it("labels languages", () => {
+    expect(langLabel("hi")).toBe("Hindi");
+    expect(langLabel("hinglish")).toBe("Hinglish");
+  });
+});

@@ -1,7 +1,7 @@
 import type { InputHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-const base = "w-full rounded-lg border bg-card px-3 text-sm placeholder:text-subtle-foreground outline-none " +
+const base = "w-full rounded-xl border bg-card px-3.5 text-sm placeholder:text-subtle-foreground outline-none " +
   "transition-shadow focus:border-ring focus:ring-3 focus:ring-ring/15 disabled:opacity-60";
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {

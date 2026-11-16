@@ -35,7 +35,7 @@ from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Res
 from pydantic import BaseModel, Field
 
 from kotler import config, db
-from kotler.api import auth, inbox, overview
+from kotler.api import analytics, auth, customers, inbox, operations, overview, studio
 from kotler.channels import core, telegram, whatsapp
 
 WEB_DIR = Path(__file__).with_name("web")
@@ -67,8 +67,8 @@ app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in os.environ.
                    allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
 
 
-app.include_router(overview.router)
-app.include_router(inbox.router)
+for module in (overview, inbox, customers, analytics, operations, studio):
+    app.include_router(module.router)
 
 
 @app.get("/health")

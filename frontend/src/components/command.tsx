@@ -1,10 +1,11 @@
 import { Command } from "cmdk";
-import { Inbox, LayoutDashboard, LogOut, Moon, Search, Store, Sun } from "lucide-react";
+import { Inbox, LogOut, Moon, Search, Store, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { channelLabel } from "./brand";
+import { NAV } from "./shell";
 
 /** Ctrl+K / ⌘K: jump to any page or conversation without the mouse. */
 export function CommandPalette({ open, setOpen, toggleTheme, theme, onLogout }: {
@@ -39,7 +40,7 @@ export function CommandPalette({ open, setOpen, toggleTheme, theme, onLogout }: 
             <Command.Group heading="Conversations" className="mb-2 text-xs text-muted-foreground [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5">
               {chats.data!.conversations.slice(0, 6).map((c) => (
                 <Command.Item key={c.channel + c.external_id} value={`chat ${c.channel} ${c.external_id}`} className={item}
-                  onSelect={() => go(`/inbox/${c.channel}/${encodeURIComponent(c.external_id)}`)}>
+                  onSelect={() => go(`/app/inbox/${c.channel}/${encodeURIComponent(c.external_id)}`)}>
                   <Inbox /> <span className="text-foreground">{c.customer_name ?? c.display_name ?? "Website visitor"}</span>
                   <span className="ml-auto text-xs">{channelLabel(c.channel)}</span>
                 </Command.Item>
@@ -47,8 +48,9 @@ export function CommandPalette({ open, setOpen, toggleTheme, theme, onLogout }: 
             </Command.Group>
           )}
           <Command.Group heading="Go to" className="text-xs text-muted-foreground [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5">
-            <Command.Item className={item} onSelect={() => go("/")}><LayoutDashboard /><span className="text-foreground">Overview</span></Command.Item>
-            <Command.Item className={item} onSelect={() => go("/inbox")}><Inbox /><span className="text-foreground">Inbox</span></Command.Item>
+            {NAV.flatMap((g) => g.items).map(({ to, label, icon: Icon }) => (
+              <Command.Item key={to} className={item} onSelect={() => go(to)}><Icon /><span className="text-foreground">{label}</span></Command.Item>))}
+            <Command.Item className={item} onSelect={() => go("/app/campaigns/new")}><Inbox /><span className="text-foreground">New campaign</span></Command.Item>
             <Command.Item className={item} onSelect={() => { setOpen(false); window.open("/store", "_blank"); }}>
               <Store /><span className="text-foreground">Open demo store</span></Command.Item>
           </Command.Group>

@@ -26,17 +26,18 @@ which COD orders will come back undelivered, and dashboards that measure everyth
 
 ### The new web app (React)
 
-The product's screens are being rebuilt as a real web app on top of the same Python code
-([learning notes](docs/r1-r2-react-app.md)):
+Every screen is now a real web app on top of the same Python code, with a warm, bold design and a public landing
+page ([R1-R2 notes](docs/r1-r2-react-app.md) · [R3-R6 notes](docs/r3-r6-complete-app.md)):
 
 | Milestone | Screens | Status |
 |---|---|---|
 | R1 | Login, app shell (Ctrl+K, dark mode, mobile), **Overview** | ✅ Done |
 | R2 | **Live Inbox**: WhatsApp, Telegram and website chats in one place, human takeover | ✅ Done |
-| R3 | Customers + Customer 360 | ⏳ Next |
-| R4 | Ask your data + AI performance | |
-| R5 | Campaigns + Helpdesk approvals | |
-| R6 | Agent Studio | |
+| R3 | **Customers** (search, segments, sort) + **Customer 360** (ML scores, orders, chats, tickets, campaigns) | ✅ Done |
+| R4 | **Ask your data** (chat-style, charts, verified summaries) + **AI performance** (agents, traces, cost, evals, ₹ impact) | ✅ Done |
+| R5 | **Campaigns** (journeys → AI A/B messages → send → measured verdict) + **Helpdesk** (AI copilot, approvals) | ✅ Done |
+| R6 | **Agent Studio** (edit, version, roll back, playground, LLM judge) | ✅ Done |
+| + | **Landing page** at `/` (product tabs with live-looking previews); the app lives at `/app` | ✅ Done |
 
 Optional later: visual journey builder, Shopify sync, gamification.
 
@@ -69,7 +70,7 @@ pip install -r requirements.txt
 
 python -m kotler.seed.generate     # creates data/kotler.db (1,500 customers, ~3,700 orders)
 streamlit run app.py               # opens http://localhost:8501
-pytest                             # 272 tests (also run automatically on GitHub)
+pytest                             # 287 tests (also run automatically on GitHub)
 python -m kotler.ml.pipeline       # train the ML models (the app also does this automatically)
 ```
 
@@ -79,7 +80,7 @@ The app generates the database by itself on first run, so `streamlit run app.py`
 
 ```bash
 uvicorn kotler.server:app --reload --port 8000    # the API (terminal 1)
-cd frontend && npm install && npm run dev         # the app, http://localhost:5173 (terminal 2); password: kotler
+cd frontend && npm install && npm run dev         # http://localhost:5173 (terminal 2): landing page; /app = dashboard (password: kotler)
 ```
 
 Or build once (`cd frontend && npm run build`) and open http://localhost:8000: the API serves the app itself.
@@ -116,7 +117,7 @@ kotler/
   agent/              Agent Studio, generic runtime, tools (shopping + support), policy retrieval, judge, copilot
   channels/           Telegram / WhatsApp / web adapters around one core: sessions, routing, consent, dedupe
   server.py           FastAPI: webhooks, /api/chat, widget.js, demo store, and serves the React app
-  api/                dashboard API: login (signed cookie), overview, inbox (takeover, live stream)
+  api/                dashboard API: auth, overview, inbox (live), customers, ask/performance, campaigns/helpdesk, studio
   web/                chat widget script and demo store page
   obs/                tracing (traces + spans), metrics and cost, eval history, business impact
   analytics/          Ask your data: guarded text-to-SQL, chart validation, grounded answers
@@ -149,6 +150,7 @@ Each phase has a write-up explaining *what*, *why* and *how*:
 - [Phase 7: Real channels](docs/phase-7-channels.md) · [Deploying](docs/deploy.md)
 - [Phase 8: Evaluation, observability & Ask your data](docs/phase-8-evaluation-observability.md)
 - [R1 + R2: React app, login, Overview, live Inbox](docs/r1-r2-react-app.md)
+- [R3 - R6: Customers, Ask, AI performance, Campaigns, Helpdesk, Agent Studio, landing page](docs/r3-r6-complete-app.md)
 
 ## Design
 

@@ -17,12 +17,12 @@ export function useLiveInbox(): boolean {
       const ev = JSON.parse((e as MessageEvent).data) as LiveEvent;
       qc.invalidateQueries({ queryKey: ["inbox"] });
       qc.invalidateQueries({ queryKey: ["conversation", ev.channel, ev.external_id] });
-      const viewing = location.pathname.startsWith("/inbox");
+      const viewing = location.pathname.startsWith("/app/inbox");
       const fresh = Date.now() - new Date(ev.created_at.replace(" ", "T")).getTime() < 120_000;  // not old/demo events
       if (fresh && ev.direction === "in" && (ev.handler === "human" || ev.needs_human) && !document.hidden) {
         toast(`${ev.display_name ?? "Customer"} needs a reply`, {
           description: ev.text.slice(0, 90),
-          action: viewing ? undefined : { label: "Open", onClick: () => location.assign(`/inbox/${ev.channel}/${encodeURIComponent(ev.external_id)}`) },
+          action: viewing ? undefined : { label: "Open", onClick: () => location.assign(`/app/inbox/${ev.channel}/${encodeURIComponent(ev.external_id)}`) },
         });
       }
     });

@@ -211,7 +211,7 @@ function CategoryCard({ d }: { d: Data }) {
 
 function OperationsCard({ d }: { d: Data }) {
   const rows = [
-    { icon: Headset, label: "Chats waiting for a person", value: num(d.inbox.needs_human), to: "/inbox?view=needs_human", alert: d.inbox.needs_human > 0 },
+    { icon: Headset, label: "Chats waiting for a person", value: num(d.inbox.needs_human), to: "/app/inbox?view=needs_human", alert: d.inbox.needs_human > 0 },
     { icon: CircleAlert, label: "Open support tickets", value: num(d.support.open), alert: false },
     { icon: ShieldCheck, label: "AI actions awaiting approval", value: num(d.support.pending_approvals), alert: d.support.pending_approvals > 0 },
     { icon: Bot, label: "AI replies this period", value: num(d.ai.agent_turns), hint: d.ai.agent_turns ? `p95 ${d.ai.p95_s.toFixed(1)}s · ${inr(d.ai.cost_inr)} est.` : "none yet" },

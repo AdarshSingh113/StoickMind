@@ -16,10 +16,19 @@ const page = await ctx.newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 
-console.log("Login");
+console.log("Landing page");
 await page.goto(base + "/");
+await page.getByRole("heading", { name: /The AI CRM that sells/ }).waitFor();
+ok(true, "public landing page renders");
+await page.getByRole("tab", { name: /Order Management/ }).click();
+await page.getByText("Actions with limits enforced in code").waitFor();
+ok(true, "module tabs switch the preview");
+await snap(page, "00-landing");
+
+console.log("Login");
+await page.getByRole("button", { name: "Open dashboard" }).first().click();
 await page.waitForURL("**/login");
-ok(true, "unauthenticated visit redirects to /login");
+ok(true, "the dashboard needs a login");
 await snap(page, "01-login");
 await page.fill("input[type=password]", "wrong");
 await page.click("button:has-text('Sign in')");
@@ -43,7 +52,7 @@ ok(await page.getByText("compared with the previous 90 days").isVisible(), "peri
 console.log("Inbox");
 // Start from fresh demo chats every run (the endpoint replaces earlier demo data), so the test is repeatable.
 ok((await page.request.post(base + "/api/v1/inbox/demo")).ok(), "demo conversations loaded");
-await page.goto(base + "/inbox");
+await page.goto(base + "/app/inbox");
 await page.getByText("Great, thanks!").first().waitFor();
 ok(true, "conversations listed");
 await page.getByRole("tab", { name: /Needs you/ }).click();
@@ -63,7 +72,7 @@ await page.getByTestId("thread").getByText("I've started your refund.").waitFor(
 ok(true, "human reply appears in the thread");
 
 console.log("Live updates (website chat taken over by a person)");
-await page.goto(base + "/inbox?view=all");
+await page.goto(base + "/app/inbox?view=all");
 await page.getByText("Website visitor").first().click();  // the skin-quiz web chat
 await page.getByRole("button", { name: "Take over" }).first().click();
 await page.getByPlaceholder(/Reply on Website/).waitFor();
@@ -85,6 +94,75 @@ await page.getByRole("button", { name: "Hand back to AI" }).click();
 await page.getByText("Handed back to the AI.").waitFor();
 ok(true, "hand back to AI");
 
+console.log("Customers (R3)");
+await page.goto(base + "/app/customers");
+await page.getByRole("heading", { name: "Customers" }).waitFor();
+// The first request on a fresh database trains the ML models (a few seconds): wait for real rows, not skeletons.
+await page.locator("tbody tr:has(div.font-semibold)").nth(24).waitFor({ timeout: 90000 });
+ok((await page.locator("tbody tr").count()) === 25, "customer list shows a page of 25");
+await page.getByRole("button", { name: /^Champions/ }).click();
+await page.waitForTimeout(700);
+ok((await page.locator("tbody").getByText("Champions").count()) === (await page.locator("tbody tr").count()), "segment filter");
+const firstName = (await page.locator("tbody tr td").first().locator("div.font-semibold").last().textContent()).trim();
+await page.locator("tbody tr").first().click();
+await page.getByRole("heading", { name: firstName }).waitFor();
+ok(await page.getByText("Lifetime value").isVisible() && await page.getByText("Churn risk").first().isVisible(), "Customer 360 opens with ML scores");
+await snap(page, "05-customer360");
+
+console.log("Campaigns (R5)");
+await page.goto(base + "/app/campaigns/new?journey=win_back");
+await page.getByText(/customers qualify today/).waitFor();
+await page.getByRole("button", { name: /Write with AI/ }).click();
+await page.getByText("Variant A").waitFor();
+ok(true, "A/B templates written (AI, or validated hand-written fallback)");
+await page.getByRole("button", { name: /Create draft/ }).click();
+await page.getByRole("button", { name: /Send campaign/ }).waitFor();
+ok(true, "campaign created as a draft");
+await page.getByRole("button", { name: /Send campaign/ }).click();
+await page.getByRole("button", { name: /Measure results/ }).click();
+await page.getByText("Verdict:").waitFor();
+ok(await page.getByText("Conversion by group").isVisible(), "send + measure shows a verdict with confidence ranges");
+await snap(page, "06-campaign");
+
+console.log("Helpdesk (R5)");
+await page.goto(base + "/app/helpdesk");
+await page.getByRole("tab", { name: /Resolved/ }).click();
+await page.locator("button:has(p)").first().click();
+await page.getByRole("button", { name: /Let AI handle it|Run again/ }).waitFor();
+ok(true, "ticket detail with the AI copilot");
+await page.getByRole("tab", { name: /Approvals/ }).click();
+await page.getByText(/Nothing waiting for approval|Needs approval|Approve|Resolve/).first().waitFor();
+ok(true, "approvals queue renders");
+
+console.log("Agent Studio (R6)");
+await page.goto(base + "/app/studio");
+await page.getByText("Kavya").first().click();
+await page.getByRole("heading", { name: "Configuration" }).waitFor();
+const goal = page.locator("label:has-text('Goal') textarea");
+const oldGoal = await goal.inputValue();
+await goal.fill(oldGoal + " (e2e)");
+await page.getByPlaceholder("What changed? (version note)").fill("e2e edit");
+await page.getByRole("button", { name: /Save version/ }).click();
+await page.getByText(/Saved as version/).waitFor();
+ok(true, "editing an agent saves a new version");
+await page.getByRole("button", { name: /Restore/ }).first().click();
+await page.getByText(/Restored as version/).waitFor();
+ok((await goal.inputValue()) === oldGoal, "restoring an old version brings the old goal back");
+await snap(page, "07-studio");
+
+console.log("Ask your data + AI performance (R4)");
+await page.goto(base + "/app/ask");
+await page.getByRole("button", { name: /Top 5 products by units sold/ }).click();
+await page.getByText(/AI isn't configured|numbers checked|Summary withheld|Couldn't answer|Result/).first().waitFor({ timeout: 60000 });
+ok(true, "Ask your data answers, or explains that the AI key is missing");
+await page.goto(base + "/app/performance");
+for (const tab of ["Traces", "Cost", "Evals", "Business impact"]) {
+  await page.getByRole("tab", { name: tab }).click();
+  await page.waitForTimeout(500);
+}
+await page.getByText(/Measured net value/).waitFor();
+ok(true, "AI performance tabs render");
+
 console.log("Command palette, dark mode, mobile");
 await page.keyboard.press("Control+k");
 await page.getByPlaceholder("Search pages or conversations…").fill("rash");
@@ -92,7 +170,7 @@ await page.locator("[cmdk-item]").filter({ hasText: "WhatsApp" }).first().waitFo
 ok(true, "Ctrl+K finds conversations");
 await page.keyboard.press("Escape");
 await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {});
-await page.goto(base + "/");
+await page.goto(base + "/app");
 await page.getByLabel("Toggle theme").click();
 await page.getByText("Net revenue").first().waitFor();
 await page.waitForTimeout(800);
@@ -103,15 +181,18 @@ await page.getByLabel("Toggle theme").click();
 const mobile = await browser.newContext({ ...devices["iPhone 13"], storageState: await ctx.storageState() });
 const m = await mobile.newPage();
 m.on("pageerror", (e) => errors.push(e.message));
-await m.goto(base + "/inbox");
+await m.goto(base + "/app/inbox");
 await m.getByText("Great, thanks!").first().click();
 await m.getByLabel("Back").waitFor();
 ok(true, "mobile: list -> thread with back button");
 await snap(m, "06-mobile-thread");
-await m.goto(base + "/");
+await m.goto(base + "/app");
 await m.getByText("Net revenue").first().waitFor();
 const overflow = await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
 ok(!overflow, "mobile: no horizontal scroll");
+await m.goto(base + "/");
+await m.getByRole("heading", { name: /The AI CRM that sells/ }).waitFor();
+ok(!(await m.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)), "mobile: landing page fits");
 await snap(m, "07-mobile-overview");
 
 ok(errors.length === 0, "no JavaScript errors" + (errors.length ? ": " + errors.join(" | ") : ""));

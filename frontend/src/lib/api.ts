@@ -25,9 +25,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-const get = <T>(p: string) => request<T>(p);
-const post = <T>(p: string, body?: unknown) =>
+export const get = <T>(p: string) => request<T>(p);
+export const post = <T>(p: string, body?: unknown) =>
   request<T>(p, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+export const put = <T>(p: string, body: unknown) => request<T>(p, { method: "PUT", body: JSON.stringify(body) });
+export const del = <T>(p: string) => request<T>(p, { method: "DELETE" });
+/** Build a query string, skipping empty values. */
+export const qs = (params: Record<string, string | number | boolean | null | undefined>) => {
+  const u = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v !== null && v !== undefined && v !== "") u.set(k, String(v));
+  const s = u.toString();
+  return s ? `?${s}` : "";
+};
 
 // ------------------------------------------------------------------ types
 export type Me = { user: string; brand: string; default_password: boolean };
@@ -96,4 +105,5 @@ export const api = {
   release: (ch: string, id: string) => post(`/api/v1/inbox/${ch}/${enc(id)}/release`),
   reply: (ch: string, id: string, text: string) => post(`/api/v1/inbox/${ch}/${enc(id)}/reply`, { text }),
   loadDemo: () => post<{ loaded: number }>("/api/v1/inbox/demo"),
+  approvalsCount: async () => (await get<{ approvals: unknown[] }>("/api/v1/helpdesk/approvals")).approvals.length,
 };

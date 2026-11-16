@@ -5,10 +5,10 @@ import { cn } from "@/lib/utils";
 export function Logo({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
-      <div className="grid size-8 place-items-center rounded-[10px] bg-gradient-to-br from-indigo-600 to-violet-500 text-[15px] font-bold text-white shadow-sm">
+      <div className="grid size-8 place-items-center rounded-[10px] bg-ink text-[16px] font-extrabold text-primary shadow-sm font-display">
         K
       </div>
-      <span className="text-[15px] font-semibold tracking-tight">Kotler <span className="text-primary">AI</span></span>
+      <span className="font-display text-[17px] font-extrabold tracking-tight">Kotler<span className="text-primary"> AI</span></span>
     </div>
   );
 }

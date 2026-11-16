@@ -15,7 +15,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, type Channel, type Conversation, type ConversationSummary, type CustomerProfile, type InboxView, type Message } from "@/lib/api";
-import { clock, dayLabel, inr, num, pct, relativeTime, titleCase } from "@/lib/format";
+import { langLabel, clock, dayLabel, inr, num, pct, relativeTime, ago, titleCase } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** Same person -> same avatar colour everywhere (list, thread, profile). */
@@ -82,7 +82,7 @@ export function Inbox() {
 function ConversationRow({ c, active }: { c: ConversationSummary; active: boolean }) {
   const preview = c.last_text ? (c.last_direction === "out" ? (c.last_author === "human" ? "You: " : "AI: ") + c.last_text : c.last_text) : "";
   return (
-    <Link to={`/inbox/${c.channel}/${encodeURIComponent(c.external_id)}${location.search}`}
+    <Link to={`/app/inbox/${c.channel}/${encodeURIComponent(c.external_id)}${location.search}`}
       className={cn("flex gap-3 border-b px-4 py-3 transition-colors", active ? "bg-primary-soft/70" : "hover:bg-muted/60")}>
       <div className="relative">
         <Avatar name={name(c)} seed={seedOf(c.customer_id, c.channel, c.external_id)} />
@@ -135,12 +135,12 @@ function Thread({ channel, id }: { channel: Channel; id: string }) {
     <div className="flex h-full min-h-0">
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-3 border-b bg-card px-4 py-3">
-          <button className="text-muted-foreground md:hidden" onClick={() => navigate("/inbox")} aria-label="Back"><ArrowLeft className="size-5" /></button>
+          <button className="text-muted-foreground md:hidden" onClick={() => navigate("/app/inbox")} aria-label="Back"><ArrowLeft className="size-5" /></button>
           <div className="relative"><Avatar name={who} seed={seedOf(s.customer_id, channel, id)} /><ChannelIcon channel={channel} className="absolute -right-1 -bottom-1" /></div>
           <div className="min-w-0">
             <div className="truncate text-[14.5px] font-semibold">{who}</div>
             <div className="text-[12px] text-muted-foreground">{channelLabel(channel)}{customer ? ` · ${customer.city}` : " · guest"}
-              {s.last_inbound_at && ` · last message ${relativeTime(s.last_inbound_at)} ago`.replace("just now ago", "just now")}</div>
+              {s.last_inbound_at && ` · last message ${ago(s.last_inbound_at)}`.replace("just now ago", "just now")}</div>
           </div>
           <div className="ml-auto flex items-center gap-2">
             {human ? <Button size="sm" onClick={() => release.mutate()} disabled={release.isPending}><Sparkles />Hand back to AI</Button>
@@ -280,7 +280,7 @@ function CustomerPanel({ c, optIn }: { c: CustomerProfile; optIn: boolean }) {
         <div className="mt-2 flex flex-wrap gap-1.5">
           {c.segment && <Badge tone="primary">{c.segment}</Badge>}
           {c.skin_type && <Badge tone="outline">{titleCase(c.skin_type)} skin</Badge>}
-          <Badge tone="outline">{c.preferred_language === "en" ? "English" : titleCase(c.preferred_language)}</Badge>
+          <Badge tone="outline">{langLabel(c.preferred_language)}</Badge>
           {!optIn && <Badge tone="warn">Opted out of offers</Badge>}
         </div>
       </div>
@@ -299,7 +299,7 @@ function CustomerPanel({ c, optIn }: { c: CustomerProfile; optIn: boolean }) {
               <div className="flex items-center justify-between"><span className="text-[12.5px] font-medium">{o.order_number}</span>
                 <Badge tone={STATUS_TONE[o.status] ?? "neutral"}>{statusLabel(o.status)}</Badge></div>
               <div className="mt-1 flex justify-between text-[12px] text-muted-foreground">
-                <span>{relativeTime(o.created_at)} ago · {o.payment_method.toUpperCase()}</span><span className="tabular">{inr(o.total)}</span></div>
+                <span>{ago(o.created_at)} · {o.payment_method.toUpperCase()}</span><span className="tabular">{inr(o.total)}</span></div>
             </div>
           ))}
         </div>

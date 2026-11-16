@@ -54,6 +54,18 @@ export function relativeTime(ts: string | null | undefined, now: Date = new Date
   return parseTs(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
+/** "5m ago", "3d ago", or "on 22 Nov 2025" for older dates (never "22 Nov ago"). */
+export function ago(ts: string | null | undefined, now: Date = new Date()): string {
+  if (!ts) return "";
+  const r = relativeTime(ts, now);
+  if (r === "just now") return r;
+  if (/^\d+[mhd]$/.test(r)) return `${r} ago`;
+  return "on " + parseTs(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+const LANG: Record<string, string> = { en: "English", hinglish: "Hinglish", hi: "Hindi" };
+export const langLabel = (code: string | null | undefined) => (code ? LANG[code] ?? code : "");
+
 export function clock(ts: string): string {
   return parseTs(ts).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 }
@@ -83,6 +95,8 @@ export function initials(name: string | null | undefined): string {
   return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
 }
 
+const SPECIAL: Record<string, string> = { whatsapp: "WhatsApp", website_chat: "Website chat", rto: "RTO", cod: "COD" };
+
 export function titleCase(s: string): string {
-  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return SPECIAL[s] ?? s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@fontsource-variable/plus-jakarta-sans";
 
 /* Dark mode follows a `dark` class on <html> (set in index.html / the theme toggle), not only the OS setting. */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -11,61 +12,68 @@
 /* Design tokens. Components use names like bg-card / text-muted-foreground, never raw colours, so light and dark
    mode (and any future brand colour) change in ONE place. */
 :root {
-  --background: #f7f8fa;
-  --foreground: #0b1220;
+  --background: #fbf9f6;
+  --foreground: #16130f;
   --card: #ffffff;
-  --muted: #f1f3f7;
-  --muted-foreground: #5d6779;
-  --subtle-foreground: #8a94a6;
-  --border: #e4e7ee;
-  --ring: #6366f1;
-  --primary: #4f46e5;
+  --muted: #f5f1eb;
+  --muted-foreground: #5f5850;
+  --subtle-foreground: #948b80;
+  --border: #ece6dd;
+  --ring: #f2780c;
+  --primary: #f2780c;
   --primary-foreground: #ffffff;
-  --primary-soft: #eef0ff;
+  --primary-soft: #fff1e3;
+  --ink: #16130f;
+  --ink-foreground: #ffffff;
   --success: #15803d;
   --success-soft: #eafaf0;
   --warning: #b45309;
   --warning-soft: #fff6e6;
   --danger: #e11d48;
   --danger-soft: #fff0f3;
-  --chart-1: #4f46e5;
-  --chart-2: #14b8a6;
-  --chart-3: #f59e0b;
-  --chart-4: #ec4899;
+  --chart-1: #f2780c;
+  --chart-2: #1f1b16;
+  --chart-3: #f6b44b;
+  --chart-4: #14b8a6;
   --chart-5: #8b5cf6;
-  --chart-6: #94a3b8;
-  --shadow: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --chart-6: #c9bfb2;
+  --shadow: 0 1px 2px rgb(40 24 8 / 0.04), 0 2px 6px rgb(40 24 8 / 0.05);
 }
 
 .dark {
-  --background: #0a0d14;
-  --foreground: #e8ebf2;
-  --card: #11151f;
-  --muted: #171c28;
-  --muted-foreground: #98a2b5;
-  --subtle-foreground: #6b7489;
-  --border: #232a39;
-  --ring: #818cf8;
-  --primary: #6d6af6;
-  --primary-foreground: #ffffff;
-  --primary-soft: #1d1f3d;
+  --background: #0f0d0b;
+  --foreground: #f3eee8;
+  --card: #181512;
+  --muted: #221e1a;
+  --muted-foreground: #b3a99d;
+  --subtle-foreground: #7d7368;
+  --border: #2e2924;
+  --ring: #ff8e2b;
+  --primary: #ff8a24;
+  --primary-foreground: #1b1006;
+  --primary-soft: #2e1d0e;
+  --ink: #f3eee8;
+  --ink-foreground: #16130f;
   --success: #4ade80;
   --success-soft: #10261a;
   --warning: #fbbf24;
   --warning-soft: #2a2010;
   --danger: #fb7185;
   --danger-soft: #2c1219;
-  --chart-1: #818cf8;
-  --chart-2: #2dd4bf;
-  --chart-3: #fbbf24;
-  --chart-4: #f472b6;
+  --chart-1: #ff8a24;
+  --chart-2: #e9e2d8;
+  --chart-3: #f6c26b;
+  --chart-4: #2dd4bf;
   --chart-5: #a78bfa;
-  --chart-6: #64748b;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  --chart-6: #5a5148;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.35);
 }
 
 @theme inline {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Plus Jakarta Sans Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -92,6 +100,7 @@
   body { background: var(--background); color: var(--foreground); font-family: var(--font-sans); }
   :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   ::selection { background: var(--primary-soft); }
+  h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0.02em; }
 }
 
 /* Numbers line up in tables and KPIs */

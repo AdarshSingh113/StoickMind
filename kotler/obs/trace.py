@@ -84,7 +84,8 @@ _ready: set[str] = set()
 
 
 def _now() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Milliseconds, so steps inside one second (LLM call -> tool -> LLM call) keep their real order.
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
 def ensure_tables() -> None:

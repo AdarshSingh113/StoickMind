@@ -4,8 +4,8 @@ Kotler AI has two programs:
 
 | Program | Command | What it is for |
 |---|---|---|
-| **API server + app** | `uvicorn kotler.server:app` | The React dashboard (Overview, live Inbox), Telegram/WhatsApp webhooks, website chat |
-| Classic dashboard | `streamlit run app.py` | Screens not yet moved to React (Customers, Ask your data, Campaigns...) |
+| **API server + app** | `uvicorn kotler.server:app` | Landing page, the React dashboard (all screens), Telegram/WhatsApp webhooks, website chat |
+| Classic dashboard | `streamlit run app.py` | Optional: the original Streamlit version, handy for ML exploration |
 
 The API server serves the React app itself (after `cd frontend && npm run build`), so **deploying the server
 deploys the dashboard too, on the same database as the chats.** Streamlit reads the same SQLite file
