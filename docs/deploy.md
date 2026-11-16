@@ -74,10 +74,12 @@ Same machine, same database: the dashboard sees every conversation. Codespaces s
 2. Add the secrets above under **Environment**, at least `KOTLER_ADMIN_PASSWORD` and `GEMINI_API_KEY`.
 3. Open `https://YOUR-APP.onrender.com`, log in.
 
-The Dockerfile hasn't been built in this project's CI yet (no Docker there); if Render reports a build error,
-the message names the failing line.
 4. Point Telegram (`set-webhook`) and Meta (webhook URL `https://YOUR-APP.onrender.com/webhooks/whatsapp`,
    verify token = `WHATSAPP_VERIFY_TOKEN`, subscribe to **messages**) at it.
+
+GitHub Actions builds this exact image on every push and runs it like Render's free plan (512 MB of memory,
+production mode): app, store, widget, login rules and ML training are checked inside the real container. Measured:
+about 176 MB of memory after training, image 1.16 GB on disk.
 
 Limits of the free plan: it sleeps after ~15 min idle (the first message wakes it, ~30 s; Telegram retries, and
 our de-duplication makes retries harmless), and its disk is **temporary**, so the SQLite file resets on redeploy.
