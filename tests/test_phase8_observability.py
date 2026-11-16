@@ -244,6 +244,12 @@ def test_followups_see_previous_sql():
     assert "revenue by tier" in llm.calls[0][0]["content"] and "SELECT tier FROM pincodes" in llm.calls[0][0]["content"]
 
 
+def test_execution_match_treats_numbers_as_text_the_same():
+    gold = pd.DataFrame({"tier": [1, 2], "revenue": [100.0, 50.0]})
+    assert execution_match(pd.DataFrame({"tier": ["1", "2"], "revenue_inr": [100.0, 50.0]}), gold)
+    assert not execution_match(pd.DataFrame({"tier": ["1", "3"], "revenue_inr": [100.0, 50.0]}), gold)
+
+
 def test_execution_match_ignores_names_order_and_extra_columns():
     gold = pd.DataFrame({"a": ["x", "y"], "b": [1.0, 2.0]})
     assert execution_match(pd.DataFrame({"cat": ["y", "x"], "n": [2, 1]}), gold)
