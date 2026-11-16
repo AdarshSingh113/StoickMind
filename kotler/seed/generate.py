@@ -36,6 +36,7 @@ from faker import Faker
 
 from kotler import config, db
 from kotler.seed import catalog
+from kotler.seed.images import image_url
 
 DATE_FMT = "%Y-%m-%d %H:%M:%S"
 
@@ -116,7 +117,7 @@ class DatasetGenerator:
                 skin_types=skins, concerns=concerns, key_ingredients=ingr, description=desc,
                 price=float(price), mrp=float(mrp), size=size,
                 stock=self.rng.choice([0, 4, 8]) if self.rng.random() < 0.1 else self.rng.randint(20, 400),
-                rating=round(self.rng.uniform(3.8, 4.8), 1), is_active=1,
+                rating=round(self.rng.uniform(3.8, 4.8), 1), is_active=1, image_url=image_url(name),
             ))
 
     def _make_customers(self):
@@ -367,9 +368,9 @@ class DatasetGenerator:
             conn.executemany("INSERT INTO pincodes VALUES (?,?,?,?)", self.pincodes)
             conn.executemany(
                 "INSERT INTO products (id, sku, name, category, skin_types, concerns, key_ingredients,"
-                " description, price, mrp, size, stock, rating, is_active) VALUES (:id, :sku, :name,"
+                " description, price, mrp, size, stock, rating, is_active, image_url) VALUES (:id, :sku, :name,"
                 " :category, :skin_types, :concerns, :key_ingredients, :description, :price, :mrp,"
-                " :size, :stock, :rating, :is_active)", self.products)
+                " :size, :stock, :rating, :is_active, :image_url)", self.products)
             conn.executemany(
                 "INSERT INTO customers (id, name, phone, email, city, state, pincode, skin_type,"
                 " preferred_language, acquisition_channel, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",

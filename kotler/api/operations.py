@@ -30,9 +30,13 @@ def journey_audience(journey: str, limit: int = Query(12, le=100)) -> dict:
         raise HTTPException(404, "Unknown journey.")
     ensure_ml()
     a = J.audience(journey)
-    cols = [c for c in ("customer_id", "first_name", "segment", "churn_risk", "product_name", "price", "reason",
-                        "language") if c in a.columns]
-    return {"total": len(a), "sample": records(a[cols], limit)}
+    cols = [c for c in ("customer_id", "first_name", "segment", "churn_risk", "product_id", "product_name", "price",
+                        "reason", "language") if c in a.columns]
+    images = dict(db.query_df("SELECT id, image_url FROM products").itertuples(index=False))
+    rows = records(a[cols], limit)
+    for r in rows:
+        r["image_url"] = images.get(r.get("product_id"))
+    return {"total": len(a), "sample": rows}
 
 
 class TemplatesIn(BaseModel):

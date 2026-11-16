@@ -113,7 +113,7 @@ def _profile(customer_id: int | None) -> dict | None:
 @router.get("/{channel}/{external_id}")
 def conversation(channel: str, external_id: str) -> dict:
     s = _session(channel, external_id)
-    msgs = db.query_df("SELECT id, direction, text, agent_slug, created_at FROM channel_events WHERE channel = ? "
+    msgs = db.query_df("SELECT id, direction, text, agent_slug, created_at, meta FROM channel_events WHERE channel = ? "
                        "AND external_id = ? ORDER BY id", (channel, external_id))
     if len(msgs):
         with db.get_conn() as conn:  # opening a conversation marks it read
@@ -123,7 +123,12 @@ def conversation(channel: str, external_id: str) -> dict:
     return {"session": {k: s[k] for k in ("channel", "external_id", "display_name", "customer_id", "agent_slug",
                                           "handler", "needs_human", "marketing_opt_in", "last_inbound_at", "handoff_at")},
             "can_reply": channel != "whatsapp" or external_id.startswith("demo-") or whatsapp.within_24h(external_id),
-            "messages": _records(msgs), "customer": _profile(s["customer_id"])}
+            "messages": [_with_cards(m) for m in _records(msgs)], "customer": _profile(s["customer_id"])}
+
+
+def _with_cards(m: dict) -> dict:
+    meta = json.loads(m.pop("meta") or "{}")
+    return {**m, "cards": meta.get("cards", [])}
 
 
 @router.post("/{channel}/{external_id}/takeover")
@@ -212,8 +217,8 @@ DEMO = [
         ("in", "Great, thanks!", None)]),
     ("telegram", "demo-552100002", None, "kavya", 0, "ai", [
         ("in", "oily skin ke liye koi achha face wash batao", None),
-        ("out", "Oily skin ke liye *Neem & Tea Tree Face Wash* best rahega: oil control karta hai aur pores clean "
-                "rakhta hai. Saath mein *Niacinamide 10% Serum* bhi le sakte ho.", "kavya"),
+        ("out", "Oily skin ke liye *Neem & Tea Tree Oil-Control Face Wash* best rahega: oil control karta hai aur "
+                "pores clean rakhta hai. Saath mein *10% Niacinamide + Zinc Serum* bhi le sakte ho.", "kavya"),
         ("in", "serum ka price kya hai?", None)]),
     ("whatsapp", "demo-919812300003", None, "asha", 1, "ai", [
         ("in", "The moisturizer gave me a rash on my cheeks. I'm really upset.", None),
@@ -241,6 +246,8 @@ def load_demo() -> dict:
     core.ensure_tables()
     base = datetime.now() - timedelta(minutes=90)
     # Linked chats use REAL demo customers (so the profile panel has orders), with their names in the text.
+    from kotler.agent.cards import product_cards
+    all_products = [{"product_id": int(i)} for i in db.query_df("SELECT id FROM products").id]
     cust = db.query_df("""SELECT c.id, c.name, (SELECT order_number FROM orders o WHERE o.customer_id = c.id
                                                 ORDER BY created_at DESC LIMIT 1) AS order_number
                           FROM customers c ORDER BY c.id LIMIT 5""").to_dict("records")
@@ -257,7 +264,9 @@ def load_demo() -> dict:
                           t.strftime(core.FMT), t.strftime(core.FMT)))
             for j, (direction, text, author) in enumerate(msgs):
                 text = text.format(**fill)
-                conn.execute("INSERT INTO channel_events (channel, external_id, direction, text, agent_slug, created_at) "
-                             "VALUES (?,?,?,?,?,?)", (ch, ext, direction, text, author,
-                                                      (t + timedelta(seconds=40 * j)).strftime(core.FMT)))
+                cards = product_cards(text, all_products) if author in ("kavya", "skin-quiz") else []
+                conn.execute("INSERT INTO channel_events (channel, external_id, direction, text, agent_slug, created_at, "
+                             "meta) VALUES (?,?,?,?,?,?,?)", (ch, ext, direction, text, author,
+                                                            (t + timedelta(seconds=40 * j)).strftime(core.FMT),
+                                                            json.dumps({"cards": cards}) if cards else None))
     return {"loaded": len(DEMO)}

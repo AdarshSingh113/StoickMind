@@ -8,6 +8,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { agentLabel, ChannelIcon, channelLabel } from "@/components/brand";
 import { EmptyState } from "@/components/empty";
+import { ProductCards } from "@/components/product";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -201,6 +202,7 @@ function Bubble({ m, grouped }: { m: Message; grouped: boolean }) {
           inbound ? "rounded-tl-md border bg-card" : human ? "rounded-tr-md bg-primary text-primary-foreground" : "rounded-tr-md bg-primary-soft text-foreground")}>
           <RichText text={m.text} />
         </div>
+        {!inbound && <ProductCards cards={m.cards} className="justify-end" />}
         <div className={cn("mt-0.5 text-[10.5px] text-subtle-foreground", inbound ? "pl-2" : "pr-2")}>{clock(m.created_at)}</div>
       </div>
     </div>

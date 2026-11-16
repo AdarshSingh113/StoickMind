@@ -238,7 +238,7 @@ def customer_tickets(customer_id: int) -> pd.DataFrame:
 
 def customer_top_products(customer_id: int, limit: int = 5) -> pd.DataFrame:
     return query_df("""
-        SELECT p.name, p.category, SUM(oi.quantity) AS units
+        SELECT p.name, p.category, p.image_url, SUM(oi.quantity) AS units
         FROM order_items oi
         JOIN orders o ON o.id = oi.order_id AND o.status != 'cancelled'
         JOIN products p ON p.id = oi.product_id

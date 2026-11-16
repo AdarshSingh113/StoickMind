@@ -61,7 +61,7 @@ def overview(days: int = Query(30, ge=7, le=365)) -> dict:
 
     monthly = crm.monthly_summary().tail(12)
     top = db.query_df(f"""
-        SELECT p.name, p.category, SUM(oi.quantity) AS units, ROUND(SUM(oi.quantity * oi.unit_price)) AS revenue
+        SELECT p.name, p.category, p.image_url, SUM(oi.quantity) AS units, ROUND(SUM(oi.quantity * oi.unit_price)) AS revenue
         FROM order_items oi JOIN orders o ON o.id = oi.order_id AND o.{crm.LIVE}
         JOIN products p ON p.id = oi.product_id
         WHERE o.created_at >= :s AND o.created_at < :e

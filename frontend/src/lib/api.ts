@@ -52,7 +52,7 @@ export type Overview = {
   repeat_rate_90d: number;
   daily: { day: string; gmv: number; net_revenue: number; orders: number }[];
   monthly: { month: string; net_revenue: number; orders: number; new_buyers: number; returning_buyers: number }[];
-  top_products: { name: string; category: string; units: number; revenue: number }[];
+  top_products: { name: string; category: string; image_url: string | null; units: number; revenue: number }[];
   categories: { category: string; revenue: number }[];
   support: { open: number; escalated: number; ai_resolved_share: number; avg_resolution_hours: number;
              pending_approvals: number };
@@ -72,7 +72,8 @@ export type ConversationSummary = {
 };
 export type InboxView = "all" | "needs_human" | "human" | "ai";
 export type InboxList = { conversations: ConversationSummary[]; counts: Record<InboxView, number> };
-export type Message = { id: number; direction: "in" | "out"; text: string; agent_slug: string | null; created_at: string };
+export type Message = { id: number; direction: "in" | "out"; text: string; agent_slug: string | null; created_at: string;
+  cards?: import("@/components/product").ProductCard[] };
 export type CustomerProfile = {
   id: number; name: string; phone: string; email: string | null; city: string; state: string; tier: number;
   skin_type: string | null; preferred_language: string; acquisition_channel: string; created_at: string;

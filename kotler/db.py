@@ -43,8 +43,25 @@ def get_conn(db_path: Path | str | None = None) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+# Columns added after a table was first created. CREATE TABLE IF NOT EXISTS doesn't change an existing table, so
+# databases created by an older version get these with ALTER TABLE: a tiny, dependency-free "migration".
+MIGRATIONS = {
+    "products": {"image_url": "TEXT"},
+    "orders": {"source": "TEXT NOT NULL DEFAULT 'store'", "ai_ref": "TEXT"},
+}
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_PATH.read_text())
+    for table, cols in MIGRATIONS.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for col, ddl in cols.items():
+            if col not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+    # Every product has a packshot (kotler/web/media/products); fill in any that are missing.
+    from kotler.seed.images import image_url
+    missing = conn.execute("SELECT id, name FROM products WHERE image_url IS NULL").fetchall()
+    conn.executemany("UPDATE products SET image_url = ? WHERE id = ?", [(image_url(r[1]), r[0]) for r in missing])
 
 
 def reset_db(db_path: Path | str | None = None) -> Path:

@@ -12,7 +12,7 @@ export default defineConfig({
   resolve: { alias: { "@": new URL("./src", import.meta.url).pathname } },
   server: {
     port: 5173,
-    proxy: { "/api": api, "/store": api, "/widget.js": api, "/health": api },
+    proxy: { "/api": api, "/store": api, "/widget.js": api, "/health": api, "/media": api },
   },
   build: { outDir: "dist", sourcemap: false, chunkSizeWarningLimit: 900 },
   test: { environment: "node", include: ["src/**/*.test.ts"] },

@@ -89,13 +89,35 @@ def _post(body: dict) -> dict:
     return data
 
 
-def send_text(to: str, text: str) -> dict:
+def _check(to: str) -> str:
     to = "".join(ch for ch in to if ch.isdigit())
     if to not in allowed_numbers():
         raise NotAllowed(f"{to} is not in WHATSAPP_ALLOWED_NUMBERS (test mode sends only to your own numbers).")
     if not within_24h(to):
         raise NotAllowed("Outside the 24-hour window: WhatsApp only allows approved templates now.")
+    return to
+
+
+def send_text(to: str, text: str) -> dict:
+    to = _check(to)
     return _post({"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": text[:4096]}})
+
+
+def send_cards(to: str, cards: list[dict]) -> int:
+    """Product images with name, price and a buy link. WhatsApp fetches images by URL, so this needs
+    PUBLIC_BASE_URL (the server's public address); without it only the text answer is sent."""
+    from kotler.agent.cards import public_base_url
+    from kotler.store import buy_link
+    base = public_base_url()
+    if not base or not cards:
+        return 0
+    to = _check(to)
+    for c in cards:
+        caption = (f"*{c['name']}*\n₹{c['price']:,.0f} · {c['size']}\n"
+                   f"Order (demo store): {base}{buy_link(c['product_id'], f'whatsapp:{to}')}")
+        _post({"messaging_product": "whatsapp", "to": to, "type": "image",
+               "image": {"link": base + c["image_url"], "caption": caption[:1024]}})
+    return len(cards)
 
 
 def send_template(to: str, template: str = "hello_world", language: str = "en_US") -> dict:
@@ -117,4 +139,9 @@ def process_payload(payload: dict, llm=None) -> int:
                 sent += 1
             except NotAllowed as e:
                 print("WhatsApp reply not sent:", e)
+        if out.cards:
+            try:
+                send_cards(msg.external_id, out.cards)
+            except Exception as e:  # pictures are a bonus: the text answer was already sent
+                print("WhatsApp product images not sent:", e)
     return sent

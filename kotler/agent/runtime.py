@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from kotler import db
+from kotler.agent.cards import product_cards
 from kotler.agent.claims import find_unbacked_claims, find_ungrounded_prices
 from kotler.agent.language import INSTRUCTION, detect_language
 from kotler.agent.prompts import compose_system_prompt
@@ -48,6 +49,7 @@ class AgentTurn:
     completion_tokens: int = 0
     error: str | None = None
     guard: list[str] = field(default_factory=list)   # safety checks that fired (shown in the UI)
+    products: list[dict] = field(default_factory=list)   # product cards for products the reply recommends
 
 
 def _now() -> str:
@@ -146,6 +148,7 @@ class Agent:
         except LLMError as e:
             turn.reply, turn.error = e.user_message, str(e)[:500]
 
+        turn.products = product_cards(turn.reply, [t.result for t in turn.tools])
         turn.latency_ms = int((time.perf_counter() - started) * 1000)
         self._save("assistant", turn.reply, latency_ms=turn.latency_ms, prompt_tokens=turn.prompt_tokens,
                    completion_tokens=turn.completion_tokens, error=turn.error)

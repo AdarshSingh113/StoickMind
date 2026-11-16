@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { ErrorNote, Stat, StatusBadge, Td, Th } from "@/components/data";
 import { EmptyState, PageHeader } from "@/components/empty";
+import { ProductThumb } from "@/components/product";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -68,7 +69,7 @@ export function NewCampaign() {
   const [templates, setTemplates] = useState<Templates | null>(null);
   const [source, setSource] = useState("manual");
   useEffect(() => { setName(`${JOURNEY_LABEL[journey]} · ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`); setTemplates(null); }, [journey]);
-  const audience = useQuery({ queryKey: ["audience", journey], queryFn: () => get<{ total: number; sample: { first_name: string; segment: string; product_name: string; price: number; reason: string; churn_risk: number }[] }>(`/api/v1/journeys/${journey}/audience?limit=8`) });
+  const audience = useQuery({ queryKey: ["audience", journey], queryFn: () => get<{ total: number; sample: { first_name: string; segment: string; product_name: string; image_url: string | null; price: number; reason: string; churn_risk: number }[] }>(`/api/v1/journeys/${journey}/audience?limit=8`) });
   const gen = useMutation({ mutationFn: () => post<{ templates: Templates; source: string }>("/api/v1/campaigns/templates", { journey, offer_pct: offer }),
     onSuccess: (r) => { setTemplates(r.templates); setSource(r.source); toast.success(r.source === "ai" ? "AI wrote two variants. Edit freely." : "Using the hand-written templates (AI unavailable or its draft failed validation)."); } });
   const create = useMutation({ mutationFn: () => post<{ id: number }>("/api/v1/campaigns", { name, journey, templates, template_source: source, offer_pct: offer, holdout_pct: holdout / 100, channel }),
@@ -85,7 +86,7 @@ export function NewCampaign() {
               <button key={k} onClick={() => setJourney(k)} className={cn("cursor-pointer rounded-full border px-3.5 py-1.5 text-[13px] font-medium",
                 journey === k ? "border-ink bg-ink text-ink-foreground" : "hover:border-primary/40")}>{l}</button>))}</div>
             {audience.data && <div className="mt-4 overflow-x-auto rounded-xl border"><table className="w-full text-[12.5px]"><thead className="bg-muted"><tr><Th>Customer</Th><Th>Segment</Th><Th>Product to promote</Th><Th>Why</Th></tr></thead>
-              <tbody className="divide-y">{audience.data.sample.map((a, i) => <tr key={i}><Td>{a.first_name}</Td><Td>{a.segment}</Td><Td>{a.product_name} · {inr(a.price)}</Td><Td className="text-muted-foreground">{a.reason}</Td></tr>)}</tbody></table></div>}
+              <tbody className="divide-y">{audience.data.sample.map((a, i) => <tr key={i}><Td>{a.first_name}</Td><Td>{a.segment}</Td><Td><div className="flex items-center gap-2.5"><ProductThumb src={a.image_url} alt={a.product_name} className="size-9" />{a.product_name} · {inr(a.price)}</div></Td><Td className="text-muted-foreground">{a.reason}</Td></tr>)}</tbody></table></div>}
           </CardBody></Card>
         <Card><CardHeader title="2 · Offer & measurement" />
           <CardBody className="grid gap-5 sm:grid-cols-3">

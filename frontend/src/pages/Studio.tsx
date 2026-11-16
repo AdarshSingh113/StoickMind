@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
 import { ErrorNote } from "@/components/data";
 import { PageHeader } from "@/components/empty";
+import { ProductCards, type ProductCard } from "@/components/product";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -150,7 +151,7 @@ export function AgentEditor() {
   );
 }
 
-type ChatTurn = { me: string; reply?: string; tools?: { name: string; arguments: Record<string, unknown>; result: Record<string, unknown> }[]; guard?: string[]; latency_ms?: number; error?: string | null };
+type ChatTurn = { me: string; reply?: string; tools?: { name: string; arguments: Record<string, unknown>; result: Record<string, unknown> }[]; guard?: string[]; latency_ms?: number; error?: string | null; cards?: ProductCard[] };
 
 function Playground({ slug, dirty }: { slug: string; dirty: boolean }) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -180,6 +181,7 @@ function Playground({ slug, dirty }: { slug: string; dirty: boolean }) {
               {t.tools?.map((x, j) => <details key={j} className="rounded-xl border border-dashed px-3 py-1.5 text-[12px]"><summary className="cursor-pointer text-muted-foreground"><Wrench className="mr-1 inline size-3.5" />{x.name}</summary>
                 <pre className="mt-1 overflow-x-auto text-[11px] whitespace-pre-wrap">{JSON.stringify(x.arguments)}{"\n→ "}{JSON.stringify(x.result).slice(0, 600)}</pre></details>)}
               {t.guard?.length ? <p className="text-[11.5px] text-warning"><ShieldCheck className="mr-1 inline size-3.5" />{t.guard.join("; ")}</p> : null}
+              {t.reply !== undefined && <ProductCards cards={t.cards} />}
               {t.reply !== undefined ? <div className="flex"><div className="max-w-[85%] rounded-2xl rounded-bl-md border bg-card px-3.5 py-2 text-[13.5px] whitespace-pre-wrap">{t.reply}
                 <div className="mt-1 text-[10.5px] text-subtle-foreground">{((t.latency_ms ?? 0) / 1000).toFixed(1)}s</div></div></div>
                 : <Skeleton className="h-10 w-2/3 rounded-2xl" />}

@@ -6,6 +6,7 @@ import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { PageHeader } from "@/components/empty";
+import { ProductThumb } from "@/components/product";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Segmented } from "@/components/ui/segmented";
@@ -253,7 +254,8 @@ function TopProductsCard({ d }: { d: Data }) {
           <tbody className="divide-y">
             {d.top_products.map((p) => (
               <tr key={p.name} className="hover:bg-muted/40">
-                <td className="px-5 py-2.5 font-medium">{p.name}</td>
+                <td className="px-5 py-2.5 font-medium"><div className="flex items-center gap-3">
+                  <ProductThumb src={p.image_url} alt={p.name} className="size-10" />{p.name}</div></td>
                 <td className="px-3 py-2.5"><Badge tone="outline">{titleCase(p.category)}</Badge></td>
                 <td className="px-3 py-2.5 text-right tabular">{num(p.units)}</td>
                 <td className="px-5 py-2.5">

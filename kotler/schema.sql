@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS products (
     size         TEXT NOT NULL,
     stock        INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
     rating       REAL NOT NULL DEFAULT 0,
-    is_active    INTEGER NOT NULL DEFAULT 1
+    is_active    INTEGER NOT NULL DEFAULT 1,
+    image_url    TEXT                       -- packshot served by the API, e.g. /media/products/<slug>.jpg
 );
 
 CREATE TABLE IF NOT EXISTS customers (
@@ -68,7 +69,9 @@ CREATE TABLE IF NOT EXISTS orders (
     courier           TEXT,
     shipped_at        TEXT,
     delivered_at      TEXT,
-    expected_delivery TEXT
+    expected_delivery TEXT,
+    source            TEXT NOT NULL DEFAULT 'store',  -- 'ai_chat' = placed from a product an AI agent recommended
+    ai_ref            TEXT                             -- which chat it came from, e.g. 'telegram:12345'
 );
 
 CREATE TABLE IF NOT EXISTS order_items (

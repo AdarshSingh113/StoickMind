@@ -18,6 +18,7 @@ customer typing "<script>" can't break or inject anything).
 from __future__ import annotations
 
 import html
+import json
 import os
 import re
 import sys
@@ -72,6 +73,53 @@ def send_text(chat_id: str, text: str) -> None:
     call("sendMessage", chat_id=chat_id, text=to_html(text), parse_mode="HTML", disable_web_page_preview=True)
 
 
+def call_files(method: str, params: dict, files: dict) -> dict:
+    """Same as call(), but uploads files (multipart). Uploading means no public image URL is needed."""
+    tok = token()
+    if not tok:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN is not set.")
+    data = {k: (json.dumps(v) if isinstance(v, (dict, list)) else v) for k, v in params.items()}
+    r = requests.post(API.format(token=tok, method=method), data=data, files=files, timeout=60)
+    out = r.json()
+    if not out.get("ok"):
+        raise RuntimeError(f"Telegram {method} failed: {out.get('description')}")
+    return out["result"]
+
+
+def _caption(card: dict) -> str:
+    price = f"₹{card['price']:,.0f}" + (f" <s>₹{card['mrp']:,.0f}</s>" if card["mrp"] > card["price"] else "")
+    return f"<b>{html.escape(card['name'])}</b>\n{price} · {html.escape(card['size'])}"
+
+
+def send_cards(chat_id: str, cards: list[dict]) -> None:
+    """Product photos with name and price. With PUBLIC_BASE_URL set, a "Buy" button opens the demo checkout,
+    attributed to this chat."""
+    from kotler.agent.cards import image_path, public_base_url
+    from kotler.store import buy_link
+    cards = [c for c in cards if image_path(c.get("image_url"))]
+    if not cards:
+        return
+    base, ref = public_base_url(), f"telegram:{chat_id}"
+    buttons = {"inline_keyboard": [[{"text": f"Buy · {c['name'][:28]}", "url": base + buy_link(c["product_id"], ref)}]
+                                   for c in cards]} if base else None
+    handles = {f"p{i}": open(image_path(c["image_url"]), "rb") for i, c in enumerate(cards)}
+    try:
+        if len(cards) == 1:
+            params = {"chat_id": chat_id, "photo": "attach://p0", "caption": _caption(cards[0]), "parse_mode": "HTML"}
+            if buttons:
+                params["reply_markup"] = buttons
+            call_files("sendPhoto", params, handles)
+            return
+        media = [{"type": "photo", "media": f"attach://p{i}", "caption": _caption(c), "parse_mode": "HTML"}
+                 for i, c in enumerate(cards)]
+        call_files("sendMediaGroup", {"chat_id": chat_id, "media": media}, handles)
+    finally:
+        for f in handles.values():
+            f.close()
+    if buttons:   # albums can't carry buttons, so they follow in one small message
+        call("sendMessage", chat_id=chat_id, text="Tap to order (demo store):", reply_markup=buttons)
+
+
 def process_update(update: dict, llm=None) -> int:
     """Handle one Telegram update end to end. Returns the number of messages sent."""
     msg = parse_update(update)
@@ -84,6 +132,11 @@ def process_update(update: dict, llm=None) -> int:
     out = handle_incoming(msg, llm)
     for t in out.texts:
         send_text(msg.external_id, t)
+    if out.cards:
+        try:
+            send_cards(msg.external_id, out.cards)
+        except Exception as e:  # pictures are a bonus: the text answer was already sent
+            print("Telegram product photos not sent:", e)
     return len(out.texts)
 
 

@@ -61,6 +61,7 @@ WELCOME = ("Hi{name}! I'm the Glow & Co. assistant.\n\n"
 MIGRATIONS = {
     "channel_users": {"handler": "TEXT NOT NULL DEFAULT 'ai'", "needs_human": "INTEGER NOT NULL DEFAULT 0",
                       "handoff_at": "TEXT", "last_read_id": "INTEGER NOT NULL DEFAULT 0"},
+    "channel_events": {"meta": "TEXT"},   # JSON, e.g. the product cards shown with an AI reply
 }
 
 
@@ -94,6 +95,7 @@ class Outgoing:
     duplicate: bool = False
     rate_limited: bool = False
     human: bool = False        # a person is handling this chat: the AI stayed silent
+    cards: list[dict] = field(default_factory=list)   # product cards for the products the reply recommends
 
 
 def _customer_for_phone(phone: str) -> int | None:
@@ -121,10 +123,13 @@ def _update_session(channel: str, external_id: str, **fields) -> None:
                      (*fields.values(), channel, external_id))
 
 
-def _log(channel: str, external_id: str, direction: str, text: str, agent: str | None = None) -> None:
+def _log(channel: str, external_id: str, direction: str, text: str, agent: str | None = None,
+         meta: dict | None = None) -> None:
+    import json
     with db.get_conn() as conn:
-        conn.execute("INSERT INTO channel_events (channel, external_id, direction, text, agent_slug, created_at) "
-                     "VALUES (?,?,?,?,?,?)", (channel, external_id, direction, text[:4000], agent, _now()))
+        conn.execute("INSERT INTO channel_events (channel, external_id, direction, text, agent_slug, created_at, meta) "
+                     "VALUES (?,?,?,?,?,?,?)", (channel, external_id, direction, text[:4000], agent, _now(),
+                                                json.dumps(meta) if meta else None))
 
 
 def already_processed(channel: str, update_id: str | None) -> bool:
@@ -189,10 +194,11 @@ def handle_incoming(msg: Incoming, llm=None) -> Outgoing:
     _log(msg.channel, msg.external_id, "in", text)
     _update_session(msg.channel, msg.external_id, last_inbound_at=_now())
 
-    def reply(texts: list[str], agent: str | None = None) -> Outgoing:
-        for t in texts:
-            _log(msg.channel, msg.external_id, "out", t, agent)
-        return Outgoing(texts=texts, agent_slug=agent)
+    def reply(texts: list[str], agent: str | None = None, cards: list[dict] | None = None) -> Outgoing:
+        for i, t in enumerate(texts):
+            last = i == len(texts) - 1
+            _log(msg.channel, msg.external_id, "out", t, agent, {"cards": cards} if cards and last else None)
+        return Outgoing(texts=texts, agent_slug=agent, cards=cards or [])
 
     cmd = text.split()[0].lower() if text else ""
     first = f" {msg.display_name.split()[0]}" if msg.display_name else ""
@@ -241,7 +247,7 @@ def handle_incoming(msg: Incoming, llm=None) -> Outgoing:
     _update_session(msg.channel, msg.external_id, agent_slug=slug, conversation_id=agent.conversation_id,
                     customer_id=agent.ctx.customer_id, verify_attempts=agent.ctx.verify_attempts,
                     **({"needs_human": 1} if escalated else {}))
-    return reply(split_message(turn.reply, MAX_CHARS.get(msg.channel, 4000)), slug)
+    return reply(split_message(turn.reply, MAX_CHARS.get(msg.channel, 4000)), slug, turn.products)
 
 
 def opted_in_recipients(channel: str, customer_ids: list[int]) -> dict[int, str]:

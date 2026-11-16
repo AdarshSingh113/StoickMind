@@ -160,7 +160,8 @@ def chat(slug: str, body: ChatIn) -> dict:
     turn = agent.reply(body.message)
     return {"conversation_id": agent.conversation_id, "reply": turn.reply, "error": turn.error, "guard": turn.guard,
             "tools": [{"name": t.name, "arguments": t.arguments, "result": t.result} for t in turn.tools],
-            "latency_ms": turn.latency_ms, "tokens": turn.prompt_tokens + turn.completion_tokens}
+            "latency_ms": turn.latency_ms, "tokens": turn.prompt_tokens + turn.completion_tokens,
+            "cards": turn.products}
 
 
 class JudgeIn(BaseModel):

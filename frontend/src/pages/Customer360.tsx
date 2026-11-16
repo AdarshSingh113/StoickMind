@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChannelIcon, agentLabel } from "@/components/brand";
 import { ErrorNote, Stat, StatusBadge, Td, Th } from "@/components/data";
+import { ProductThumb } from "@/components/product";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
@@ -28,7 +29,7 @@ type C360 = {
   chats: { channel: Channel; external_id: string; handler: string; needs_human: number; last_inbound_at: string | null }[];
   conversations: { id: number; agent: string; channel: string; created_at: string; turns: number }[];
   campaigns: { id: number; name: string; journey: string; grp: string; converted: number | null; revenue: number | null; status: string }[];
-  top_products: { name: string; category: string; units: number }[];
+  top_products: { name: string; category: string; image_url: string | null; units: number }[];
 };
 
 const axis = { fontSize: 11.5, fill: "var(--subtle-foreground)" };
@@ -122,7 +123,8 @@ export function Customer360() {
           <Card>
             <CardHeader title="Favourite products" />
             <CardBody className="space-y-2">{q.data.top_products.map((p) => (
-              <div key={p.name} className="flex items-center justify-between gap-3 text-[13px]"><span className="truncate">{p.name}</span><Badge tone="outline">×{p.units}</Badge></div>))}
+              <div key={p.name} className="flex items-center gap-3 text-[13px]"><ProductThumb src={p.image_url} alt={p.name} className="size-10" />
+                <span className="min-w-0 flex-1 truncate">{p.name}</span><Badge tone="outline">×{p.units}</Badge></div>))}
               {!q.data.top_products.length && <p className="text-[13px] text-muted-foreground">None yet.</p>}</CardBody>
           </Card>
           <Card>
