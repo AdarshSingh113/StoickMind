@@ -57,6 +57,7 @@ def _purchases() -> pd.DataFrame:
 
 
 def _best_in_category(category: str, skin_type: str | None) -> dict | None:
+    skin_type = skin_type if isinstance(skin_type, str) else None   # unknown skin type arrives from pandas as NaN
     rows = db.query_df("SELECT id, name, price, rating, skin_types FROM products WHERE category = ? AND stock > 0 "
                        "AND is_active = 1 ORDER BY rating DESC", (category,)).to_dict("records")
     suits = [r for r in rows if not skin_type or skin_type in r["skin_types"] or "all" in r["skin_types"]]

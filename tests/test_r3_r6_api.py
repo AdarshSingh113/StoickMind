@@ -278,3 +278,21 @@ def test_campaign_where_everyone_is_excluded_cannot_be_sent(admin):
     r = admin.post(f"/api/v1/campaigns/{cid}/send")
     assert r.status_code == 409 and "Nobody to send to" in r.json()["detail"]
     assert admin.get(f"/api/v1/campaigns/{cid}").json()["campaign"]["status"] == "draft"
+
+
+def test_journeys_work_with_customers_who_have_no_skin_type():
+    """Checkout creates customers without a skin type; pandas turns that NULL into NaN."""
+    from kotler import store
+    from kotler.marketing import journeys
+    from kotler.ml import pipeline
+    p = db.query_one("SELECT id FROM products WHERE stock > 5 AND category = 'face_wash' LIMIT 1")
+    pincode = db.query_one("SELECT pincode FROM pincodes LIMIT 1")["pincode"]
+    store.place_order(product_id=p["id"], quantity=1, name="New Buyer", phone="9811100022", address="12 MG Road, Indiranagar",
+                      pincode=pincode, payment="prepaid")
+    with db.get_conn() as conn:
+        conn.execute("UPDATE orders SET status = 'delivered' WHERE customer_id = (SELECT id FROM customers WHERE phone = '9811100022')")
+    pipeline.ensure_trained()
+    pipeline.refresh_scores()
+    assert db.query_one("SELECT skin_type FROM customers WHERE phone = '9811100022'")["skin_type"] is None
+    for j in ("cross_sell", "second_order", "replenishment", "win_back"):
+        journeys.audience(j)                                   # must not raise
