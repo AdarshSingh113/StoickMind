@@ -119,7 +119,8 @@ function RichText({ text }: { text: string }) {
 function Thread({ channel, id }: { channel: Channel; id: string }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [showProfile, setShowProfile] = useState(true);
+  // The customer panel opens by default only on wide screens; on a laptop the conversation gets the room.
+  const [showProfile, setShowProfile] = useState(() => typeof window === "undefined" || window.matchMedia("(min-width: 1440px)").matches);
   const conv = useQuery({ queryKey: ["conversation", channel, id], queryFn: () => api.conversation(channel, id) });
   const summary = useMutation({ mutationFn: () => api.assist(channel, id, "summarize"), onError: (e) => toast.error((e as Error).message) });
   const refresh = () => { qc.invalidateQueries({ queryKey: ["conversation", channel, id] }); qc.invalidateQueries({ queryKey: ["inbox"] }); };
@@ -140,14 +141,14 @@ function Thread({ channel, id }: { channel: Channel; id: string }) {
         <header className="flex items-center gap-3 border-b bg-card px-4 py-3">
           <button className="text-muted-foreground md:hidden" onClick={() => navigate("/app/inbox")} aria-label="Back"><ArrowLeft className="size-5" /></button>
           <div className="relative"><Avatar name={who} seed={seedOf(s.customer_id, channel, id)} /><ChannelIcon channel={channel} className="absolute -right-1 -bottom-1" /></div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="truncate text-[14.5px] font-semibold">{who}</div>
-            <div className="text-[12px] text-muted-foreground">{channelLabel(channel)}{customer ? ` · ${customer.city}` : " · guest"}
+            <div className="truncate text-[12px] text-muted-foreground">{channelLabel(channel)}{customer ? ` · ${customer.city}` : " · guest"}
               {s.last_inbound_at && ` · last message ${ago(s.last_inbound_at)}`.replace("just now ago", "just now")}</div>
           </div>
-          <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" variant="ghost" onClick={() => summary.mutate()} disabled={summary.isPending}>
-              <Sparkles />{summary.isPending ? "Summarizing…" : "Summarize"}</Button>
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={() => summary.mutate()} disabled={summary.isPending} aria-label="Summarize" title="AI summary of this chat">
+              <Sparkles /><span className="hidden 2xl:inline">{summary.isPending ? "Summarizing…" : "Summarize"}</span></Button>
             {human ? <Button size="sm" onClick={() => release.mutate()} disabled={release.isPending}><Sparkles />Hand back to AI</Button>
               : <Button size="sm" variant="primary" onClick={() => takeover.mutate()} disabled={takeover.isPending}><Hand />Take over</Button>}
             <button className="hidden text-muted-foreground hover:text-foreground xl:block" onClick={() => setShowProfile(!showProfile)}
