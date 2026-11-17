@@ -6,6 +6,8 @@ Endpoints (all need login):
   POST /api/v1/inbox/{channel}/{external_id}/takeover  a person takes over; the AI goes silent
   POST /api/v1/inbox/{channel}/{external_id}/release   hand back to the AI
   POST /api/v1/inbox/{channel}/{external_id}/reply     the person's message, sent on the customer's channel
+  POST /api/v1/inbox/{channel}/{external_id}/notes     a private team note (never sent to the customer)
+  POST /api/v1/inbox/{channel}/{external_id}/assist    AI copilot: suggest / rephrase / translate / summarize
   GET  /api/v1/inbox/stream                            Server-Sent Events: new messages as they happen
   POST /api/v1/inbox/demo                              load demo conversations (to try the inbox without bots)
 
@@ -120,7 +122,9 @@ def conversation(channel: str, external_id: str) -> dict:
             conn.execute("UPDATE channel_users SET last_read_id = ? WHERE channel = ? AND external_id = ?",
                          (int(msgs.id.max()), channel, external_id))
     from kotler.channels import whatsapp
-    return {"session": {k: s[k] for k in ("channel", "external_id", "display_name", "customer_id", "agent_slug",
+    notes = db.query_df("SELECT id, author, text, created_at FROM inbox_notes WHERE channel = ? AND external_id = ? "
+                        "ORDER BY id", (channel, external_id))
+    return {"notes": _records(notes), "session": {k: s[k] for k in ("channel", "external_id", "display_name", "customer_id", "agent_slug",
                                           "handler", "needs_human", "marketing_opt_in", "last_inbound_at", "handoff_at")},
             "can_reply": channel != "whatsapp" or external_id.startswith("demo-") or whatsapp.within_24h(external_id),
             "messages": [_with_cards(m) for m in _records(msgs)], "customer": _profile(s["customer_id"])}
@@ -166,6 +170,41 @@ def reply(channel: str, external_id: str, body: ReplyIn) -> dict:
         conn.execute("UPDATE channel_users SET needs_human = 0 WHERE channel = ? AND external_id = ?",
                      (channel, external_id))
     return {"sent": True}
+
+
+class NoteIn(BaseModel):
+    text: str = Field(..., min_length=1, max_length=2000)
+
+
+@router.post("/{channel}/{external_id}/notes")
+def add_note(channel: str, external_id: str, body: NoteIn) -> dict:
+    """A private note for the team. Stored separately from messages, so it can never be sent to the customer."""
+    _session(channel, external_id)
+    with db.get_conn() as conn:
+        conn.execute("INSERT INTO inbox_notes (channel, external_id, author, text, created_at) VALUES (?,?,?,?,?)",
+                     (channel, external_id, "admin", body.text.strip(), core._now()))
+    return {"ok": True}
+
+
+class AssistIn(BaseModel):
+    action: str = Field(..., pattern="^(suggest|friendlier|shorter|hinglish|english|summarize)$")
+    draft: str = Field("", max_length=4000)
+
+
+@router.post("/{channel}/{external_id}/assist")
+def assist(channel: str, external_id: str, body: AssistIn) -> dict:
+    """AI copilot for the person replying: suggestions only, never sent automatically."""
+    from kotler.agent.assist import assist as run
+    from kotler.api.common import need_llm
+    from kotler.llm import LLMError
+    _session(channel, external_id)
+    llm = need_llm()
+    try:
+        return run(llm, body.action, channel, external_id, body.draft)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    except LLMError as e:
+        raise HTTPException(502, e.user_message) from e
 
 
 # --------------------------------------------------------------------- live stream

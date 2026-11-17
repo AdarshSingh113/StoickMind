@@ -86,8 +86,10 @@ export type Conversation = {
     "handler" | "needs_human" | "marketing_opt_in" | "last_inbound_at" | "handoff_at">;
   can_reply: boolean;
   messages: Message[];
+  notes: { id: number; author: string; text: string; created_at: string }[];
   customer: CustomerProfile | null;
 };
+export type AssistAction = "suggest" | "friendlier" | "shorter" | "hinglish" | "english" | "summarize";
 export type LiveEvent = Message & {
   channel: Channel; external_id: string; display_name: string | null; needs_human: number; handler: string;
 };
@@ -106,5 +108,8 @@ export const api = {
   release: (ch: string, id: string) => post(`/api/v1/inbox/${ch}/${enc(id)}/release`),
   reply: (ch: string, id: string, text: string) => post(`/api/v1/inbox/${ch}/${enc(id)}/reply`, { text }),
   loadDemo: () => post<{ loaded: number }>("/api/v1/inbox/demo"),
+  assist: (ch: string, id: string, action: AssistAction, draft = "") =>
+    post<{ text: string; warnings: string[]; language: string }>(`/api/v1/inbox/${ch}/${enc(id)}/assist`, { action, draft }),
+  addNote: (ch: string, id: string, text: string) => post(`/api/v1/inbox/${ch}/${enc(id)}/notes`, { text }),
   approvalsCount: async () => (await get<{ approvals: unknown[] }>("/api/v1/helpdesk/approvals")).approvals.length,
 };

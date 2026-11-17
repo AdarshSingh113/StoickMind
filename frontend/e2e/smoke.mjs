@@ -70,6 +70,12 @@ await page.getByPlaceholder(/Reply on WhatsApp/).fill("Hi, I'm Neha from Glow & 
 await page.keyboard.press("Enter");
 await page.getByTestId("thread").getByText("I've started your refund.").waitFor();
 ok(true, "human reply appears in the thread");
+await page.getByLabel("Private note").check();
+await page.getByPlaceholder(/Private note/).fill("Refund approved, pickup booked for tomorrow");
+await page.keyboard.press("Enter");
+await page.getByTestId("thread").getByText("Refund approved, pickup booked").waitFor();
+ok(await page.getByText(/Private note ·/).first().isVisible(), "private note shows in the thread, marked team-only");
+await page.getByLabel("Private note").uncheck();
 
 console.log("Live updates (website chat taken over by a person)");
 await page.goto(base + "/app/inbox?view=all");

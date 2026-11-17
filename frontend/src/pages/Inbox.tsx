@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, Bot, CircleUserRound, Hand, Inbox as InboxIcon, MessageSquareDashed, PanelRightClose, PanelRightOpen,
+  ArrowLeft, Bot, CircleUserRound, Clock, Hand, StickyNote, Inbox as InboxIcon, MessageSquareDashed, PanelRightClose, PanelRightOpen,
   Search, SendHorizontal, Sparkles, TriangleAlert, UserRound,
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, type Channel, type Conversation, type ConversationSummary, type CustomerProfile, type InboxView, type Message } from "@/lib/api";
+import { api, type AssistAction, type Channel, type Conversation, type ConversationSummary, type CustomerProfile, type InboxView, type Message } from "@/lib/api";
 import { langLabel, clock, dayLabel, inr, num, pct, relativeTime, ago, titleCase } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -120,6 +120,7 @@ function Thread({ channel, id }: { channel: Channel; id: string }) {
   const navigate = useNavigate();
   const [showProfile, setShowProfile] = useState(true);
   const conv = useQuery({ queryKey: ["conversation", channel, id], queryFn: () => api.conversation(channel, id) });
+  const summary = useMutation({ mutationFn: () => api.assist(channel, id, "summarize"), onError: (e) => toast.error((e as Error).message) });
   const refresh = () => { qc.invalidateQueries({ queryKey: ["conversation", channel, id] }); qc.invalidateQueries({ queryKey: ["inbox"] }); };
   const takeover = useMutation({ mutationFn: () => api.takeover(channel, id), onSuccess: () => { refresh(); toast.success("You're handling this chat. The AI will stay quiet."); } });
   const release = useMutation({ mutationFn: () => api.release(channel, id), onSuccess: () => { refresh(); toast("Handed back to the AI."); } });
@@ -144,19 +145,33 @@ function Thread({ channel, id }: { channel: Channel; id: string }) {
               {s.last_inbound_at && ` · last message ${ago(s.last_inbound_at)}`.replace("just now ago", "just now")}</div>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={() => summary.mutate()} disabled={summary.isPending}>
+              <Sparkles />{summary.isPending ? "Summarizing…" : "Summarize"}</Button>
             {human ? <Button size="sm" onClick={() => release.mutate()} disabled={release.isPending}><Sparkles />Hand back to AI</Button>
               : <Button size="sm" variant="primary" onClick={() => takeover.mutate()} disabled={takeover.isPending}><Hand />Take over</Button>}
             <button className="hidden text-muted-foreground hover:text-foreground xl:block" onClick={() => setShowProfile(!showProfile)}
               aria-label="Toggle customer panel">{showProfile ? <PanelRightClose className="size-5" /> : <PanelRightOpen className="size-5" />}</button>
           </div>
         </header>
-        <Messages messages={conv.data.messages} />
+        {summary.data && (
+          <div className="border-b bg-primary-soft/50 px-4 py-3 text-[13px] animate-in sm:px-8">
+            <div className="mx-auto flex max-w-3xl gap-3"><Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+              <div className="flex-1 whitespace-pre-line"><b>AI summary</b><br />{summary.data.text}</div>
+              <button className="text-muted-foreground hover:text-foreground" onClick={() => summary.reset()} aria-label="Close summary">✕</button></div>
+          </div>)}
+        <Messages messages={withNotes(conv.data)} />
         <Composer channel={channel} id={id} human={human} canReply={conv.data.can_reply} needsHuman={!!s.needs_human}
-          onTakeover={() => takeover.mutate()} onSent={refresh} />
+          lastInbound={s.last_inbound_at} onTakeover={() => takeover.mutate()} onSent={refresh} />
       </div>
       {showProfile && <Profile conv={conv.data} />}
     </div>
   );
+}
+
+/** Private notes are shown in the thread, in time order, but they live in their own table and are never sent. */
+function withNotes(c: Conversation): Message[] {
+  const notes: Message[] = (c.notes ?? []).map((n) => ({ id: -n.id, direction: "out", text: n.text, agent_slug: "note", created_at: n.created_at }));
+  return [...c.messages, ...notes].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id - b.id);
 }
 
 function Messages({ messages }: { messages: Message[] }) {
@@ -188,6 +203,16 @@ function Messages({ messages }: { messages: Message[] }) {
 }
 
 function Bubble({ m, grouped }: { m: Message; grouped: boolean }) {
+  if (m.agent_slug === "note") {
+    return (
+      <div className="my-3 flex justify-center animate-in">
+        <div className="max-w-[80%] rounded-xl border border-amber-300/60 bg-amber-50 px-3.5 py-2 text-[13px] text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-200">
+          <div className="mb-0.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide"><StickyNote className="size-3.5" />Private note · {clock(m.created_at)}</div>
+          <div className="whitespace-pre-wrap">{m.text}</div>
+        </div>
+      </div>
+    );
+  }
   const inbound = m.direction === "in";
   const human = m.agent_slug === "human";
   return (
@@ -209,14 +234,33 @@ function Bubble({ m, grouped }: { m: Message; grouped: boolean }) {
   );
 }
 
-const QUICK = ["Thanks for your patience! Let me check that for you.", "I've sorted this out for you. Anything else I can help with?",
-  "Could you share your order number, please?"];
+const REPHRASE: { action: AssistAction; label: string }[] = [
+  { action: "friendlier", label: "Friendlier" }, { action: "shorter", label: "Shorter" },
+  { action: "hinglish", label: "Hinglish" }, { action: "english", label: "English" }];
 
-function Composer({ channel, id, human, canReply, needsHuman, onTakeover, onSent }: {
-  channel: Channel; id: string; human: boolean; canReply: boolean; needsHuman: boolean; onTakeover: () => void; onSent: () => void;
+/** WhatsApp lets you reply freely for 24 hours after the customer's last message. */
+function windowLeft(lastInbound: string | null): string | null {
+  if (!lastInbound) return null;
+  const left = 24 * 3600_000 - (Date.now() - new Date(lastInbound.replace(" ", "T")).getTime());
+  if (left <= 0) return "Reply window closed";
+  const h = Math.floor(left / 3600_000), m = Math.floor((left % 3600_000) / 60_000);
+  return `${h}h ${m}m left to reply`;
+}
+
+function Composer({ channel, id, human, canReply, needsHuman, lastInbound, onTakeover, onSent }: {
+  channel: Channel; id: string; human: boolean; canReply: boolean; needsHuman: boolean; lastInbound: string | null;
+  onTakeover: () => void; onSent: () => void;
 }) {
   const [text, setText] = useState("");
-  const send = useMutation({ mutationFn: (t: string) => api.reply(channel, id, t), onSuccess: () => { setText(""); onSent(); },
+  const [note, setNote] = useState(false);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const send = useMutation({
+    mutationFn: (t: string) => (note ? api.addNote(channel, id, t) : api.reply(channel, id, t)),
+    onSuccess: () => { setText(""); setWarnings([]); if (note) toast.success("Note saved. Only your team sees it."); onSent(); },
+    onError: (e) => toast.error((e as Error).message) });
+  const ai = useMutation({
+    mutationFn: (action: AssistAction) => api.assist(channel, id, action, text),
+    onSuccess: (r) => { setText(r.text); setWarnings(r.warnings); },
     onError: (e) => toast.error((e as Error).message) });
   if (!human) {
     return (
@@ -231,23 +275,39 @@ function Composer({ channel, id, human, canReply, needsHuman, onTakeover, onSent
     );
   }
   const submit = () => { const t = text.trim(); if (t && !send.isPending) send.mutate(t); };
+  const blocked = !canReply && !note;
+  const timer = channel === "whatsapp" ? windowLeft(lastInbound) : null;
   return (
     <div className="border-t bg-card px-4 py-3">
-      {!canReply && (
+      {blocked && (
         <div className="mb-2 flex items-center gap-2 rounded-lg bg-warning-soft px-3 py-2 text-[12.5px] text-warning">
           <TriangleAlert className="size-4" />WhatsApp only allows free-form replies within 24 hours of the customer's last message.
         </div>
       )}
-      <div className="mb-2 flex gap-1.5 overflow-x-auto scroll-thin">
-        {QUICK.map((qr) => <button key={qr} onClick={() => setText(qr)} className="shrink-0 cursor-pointer rounded-full border px-2.5 py-1 text-[12px] text-muted-foreground hover:border-primary/40 hover:text-foreground">{qr.slice(0, 34)}…</button>)}
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <Button size="sm" variant="secondary" onClick={() => ai.mutate("suggest")} disabled={ai.isPending || note}>
+          <Sparkles className="text-primary" />{ai.isPending && ai.variables === "suggest" ? "Writing…" : "Suggest reply"}</Button>
+        {REPHRASE.map((r) => (
+          <button key={r.action} onClick={() => ai.mutate(r.action)} disabled={ai.isPending || !text.trim() || note}
+            className="cursor-pointer rounded-full border px-2.5 py-1 text-[12px] text-muted-foreground hover:border-primary/40 hover:text-foreground disabled:cursor-default disabled:opacity-40">
+            {ai.isPending && ai.variables === r.action ? "…" : r.label}</button>))}
+        <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[12px] text-muted-foreground">
+          <input type="checkbox" checked={note} onChange={(e) => setNote(e.target.checked)} className="accent-[var(--primary)]" />
+          <StickyNote className="size-3.5" />Private note</label>
+        {timer && <Badge tone={timer.startsWith("Reply window closed") ? "bad" : "good"}><Clock className="size-3" />{timer}</Badge>}
       </div>
-      <div className="flex items-end gap-2 rounded-xl border bg-background p-2 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/15">
-        <Textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} disabled={!canReply}
+      <div className={cn("flex items-end gap-2 rounded-xl border p-2 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/15",
+        note ? "border-amber-300 bg-amber-50 dark:bg-amber-950/30" : "bg-background")}>
+        <Textarea rows={text.length > 140 ? 5 : 2} value={text} onChange={(e) => { setText(e.target.value); setWarnings([]); }} disabled={blocked}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
-          placeholder={`Reply on ${channelLabel(channel)}… (Enter to send, Shift+Enter for a new line)`}
+          placeholder={note ? "Private note: only your team sees this" : `Reply on ${channelLabel(channel)}… (Enter to send, Shift+Enter for a new line)`}
           className="border-0 bg-transparent shadow-none focus:ring-0" maxLength={4000} />
-        <Button variant="primary" size="icon" onClick={submit} disabled={!text.trim() || send.isPending || !canReply} aria-label="Send"><SendHorizontal /></Button>
+        <Button variant="primary" size="icon" onClick={submit} disabled={!text.trim() || send.isPending || blocked} aria-label={note ? "Save note" : "Send"}>
+          {note ? <StickyNote /> : <SendHorizontal />}</Button>
       </div>
+      {warnings.length > 0 && (
+        <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-warning"><TriangleAlert className="size-3.5" />
+          Check before sending: {warnings.join(", ")} {warnings.length === 1 ? "isn't" : "aren't"} in this chat or the customer's orders.</p>)}
     </div>
   );
 }

@@ -44,6 +44,10 @@ CREATE TABLE IF NOT EXISTS channel_events (
         CHECK (direction IN ('in', 'out')), text TEXT, agent_slug TEXT, created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_channel_events_user ON channel_events(channel, external_id, created_at);
+CREATE TABLE IF NOT EXISTS inbox_notes (  -- private notes between team members: never sent to the customer
+    id INTEGER PRIMARY KEY, channel TEXT NOT NULL, external_id TEXT NOT NULL, author TEXT NOT NULL, text TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 ORDER_WORDS = re.compile(r"\b(order|orders|track|tracking|deliver|delivery|courier|cancel|refund|return|replace|"
