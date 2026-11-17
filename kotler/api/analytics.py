@@ -39,6 +39,13 @@ def performance(days: int = Query(30, ge=0, le=365), include_eval: bool = False)
             "tools": records(metrics.tool_stats(d)), "guards": records(metrics.guard_stats(d))}
 
 
+@router.get("/performance/conversations")
+def conversations(days: int = Query(30, ge=0, le=365)) -> dict:
+    from kotler import store
+    from kotler.obs.conversations import conversation_stats
+    return {**conversation_stats(days or None), "ai_sales": store.ai_sales(days or None)}
+
+
 @router.get("/performance/traces")
 def traces(days: int = Query(30, ge=0, le=365), include_eval: bool = False, kind: str | None = None,
            status: str | None = None, q: str | None = Query(None, max_length=100), limit: int = Query(100, le=500)) -> dict:

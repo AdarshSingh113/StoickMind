@@ -68,7 +68,7 @@ export type ConversationSummary = {
   customer_name: string | null; city: string | null; agent_slug: string | null; handler: "ai" | "human";
   needs_human: number; marketing_opt_in: number; last_inbound_at: string | null; handoff_at: string | null;
   last_text: string | null; last_direction: "in" | "out" | null; last_author: string | null;
-  last_at: string | null; last_id: number | null; unread: number;
+  last_at: string | null; last_id: number | null; unread: number; intent: string; intent_label: string;
 };
 export type InboxView = "all" | "needs_human" | "human" | "ai";
 export type InboxList = { conversations: ConversationSummary[]; counts: Record<InboxView, number> };

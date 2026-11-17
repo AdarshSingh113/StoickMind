@@ -153,7 +153,9 @@ await page.getByText(/Saved as version/).waitFor();
 ok(true, "editing an agent saves a new version");
 await page.getByRole("button", { name: /Restore/ }).first().click();
 await page.getByText(/Restored as version/).waitFor();
-ok((await goal.inputValue()) === oldGoal, "restoring an old version brings the old goal back");
+const restored = await page.waitForFunction(([el, want]) => el.value === want, [await goal.elementHandle(), oldGoal], { timeout: 5000 })
+  .then(() => true, () => false);
+ok(restored, "restoring an old version brings the old goal back");
 await snap(page, "07-studio");
 
 console.log("Ask your data + AI performance (R4)");
@@ -162,6 +164,8 @@ await page.getByRole("button", { name: /Top 5 products by units sold/ }).click()
 await page.getByText(/AI isn't configured|numbers checked|Summary withheld|Couldn't answer|Result/).first().waitFor({ timeout: 60000 });
 ok(true, "Ask your data answers, or explains that the AI key is missing");
 await page.goto(base + "/app/performance");
+await page.getByText("What customers ask about").waitFor();
+ok(await page.getByText("Skin reaction").first().isVisible(), "conversations tab: topics + share handled fully by AI");
 for (const tab of ["Traces", "Cost", "Evals", "Business impact"]) {
   await page.getByRole("tab", { name: tab }).click();
   await page.waitForTimeout(500);

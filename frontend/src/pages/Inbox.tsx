@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, Bot, CircleUserRound, Clock, Hand, StickyNote, Inbox as InboxIcon, MessageSquareDashed, PanelRightClose, PanelRightOpen,
+  ArrowLeft, Bot, CircleUserRound, Clock, Hand, StickyNote, Tag, Inbox as InboxIcon, MessageSquareDashed, PanelRightClose, PanelRightOpen,
   Search, SendHorizontal, Sparkles, TriangleAlert, UserRound,
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -92,15 +92,16 @@ function ConversationRow({ c, active }: { c: ConversationSummary; active: boolea
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className={cn("truncate text-[13.5px]", c.unread ? "font-semibold" : "font-medium")}>{name(c)}</span>
+          {c.external_id.startsWith("demo-") && <span className="shrink-0 rounded bg-muted px-1 text-[10.5px] text-subtle-foreground">demo</span>}
           <span className="ml-auto shrink-0 text-[11.5px] text-subtle-foreground">{relativeTime(c.last_at)}</span>
         </div>
         <p className={cn("mt-0.5 line-clamp-1 text-[12.5px]", c.unread ? "text-foreground" : "text-muted-foreground")}>{stripStars(preview)}</p>
-        <div className="mt-1.5 flex items-center gap-1.5">
-          {c.needs_human ? <Badge tone="bad"><Hand />Needs you</Badge> : null}
-          {c.handler === "human" ? <Badge tone="primary"><UserRound />You're handling</Badge>
-            : <Badge tone="neutral"><Bot />{agentLabel(c.agent_slug) || "AI"}</Badge>}
-          {c.external_id.startsWith("demo-") && <Badge tone="outline">demo</Badge>}
-          {c.unread > 0 && <span className="ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white tabular">{c.unread}</span>}
+        <div className="mt-1.5 flex min-w-0 items-center gap-1.5 overflow-hidden">
+          {c.intent && c.intent !== "other" && <Badge tone="outline" className="shrink-0" title="Topic (auto-tagged)"><Tag />{c.intent_label}</Badge>}
+          {c.handler === "human" ? <Badge tone="primary" className="shrink-0"><UserRound />You're handling</Badge>
+            : c.needs_human ? <Badge tone="bad" className="shrink-0"><Hand />Needs you</Badge>
+            : <Badge tone="neutral" className="shrink-0"><Bot />{agentLabel(c.agent_slug)?.split(" · ")[0] || "AI"}</Badge>}
+          {c.unread > 0 && <span className="ml-auto grid h-5 shrink-0 min-w-5 place-items-center rounded-full bg-primary px-1.5 text-[11px] font-semibold text-white tabular">{c.unread}</span>}
         </div>
       </div>
     </Link>

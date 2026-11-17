@@ -84,9 +84,24 @@ def list_conversations(view: str = Query("all", pattern="^(all|needs_human|human
     counts = db.query_one("""SELECT COUNT(*) AS all_, COALESCE(SUM(needs_human), 0) AS needs_human,
                                     COALESCE(SUM(handler = 'human'), 0) AS human, COALESCE(SUM(handler = 'ai'), 0) AS ai
                              FROM channel_users""")
-    return {"conversations": _records(db.query_df(sql, tuple(params))),
+    return {"conversations": _with_intents(_records(db.query_df(sql, tuple(params)))),
             "counts": {"all": counts["all_"], "needs_human": counts["needs_human"], "human": counts["human"],
                        "ai": counts["ai"]}}
+
+
+def _with_intents(convs: list[dict]) -> list[dict]:
+    """Tag each conversation with what the customer is asking about (rule-based, see kotler.agent.intent)."""
+    from kotler.agent.intent import LABELS, conversation_intent
+    if not convs:
+        return convs
+    keys = [f"{c['channel']}:{c['external_id']}" for c in convs]
+    texts = db.query_df(f"""SELECT channel || ':' || external_id AS k, text FROM channel_events WHERE direction = 'in'
+                            AND channel || ':' || external_id IN ({",".join("?" * len(keys))})""", tuple(keys))
+    by = texts.groupby("k").text.apply(lambda s: s.fillna("").tolist()).to_dict()
+    for c, k in zip(convs, keys):
+        intent = conversation_intent(by.get(k, []))
+        c["intent"], c["intent_label"] = intent, LABELS[intent]
+    return convs
 
 
 def _profile(customer_id: int | None) -> dict | None:
@@ -293,6 +308,7 @@ def load_demo() -> dict:
     with db.get_conn() as conn:
         conn.execute("DELETE FROM channel_events WHERE external_id LIKE 'demo-%'")
         conn.execute("DELETE FROM channel_users WHERE external_id LIKE 'demo-%'")
+        conn.execute("DELETE FROM inbox_notes WHERE external_id LIKE 'demo-%'")
         for i, (ch, ext, name, agent, needs, handler, msgs) in enumerate(DEMO):
             t = base + timedelta(minutes=17 * i)
             c = cust[i] if ch != "web" and i < len(cust) else None

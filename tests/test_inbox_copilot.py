@@ -124,3 +124,11 @@ def test_unchecked_facts():
     ctx = "KTL-000123 on 2026-11-01: shipped, COD, ₹1,299"
     assert unchecked_facts("Your KTL-000123 (₹1299) is shipped", ctx) == []
     assert unchecked_facts("Rs. 250 off on ktl-000124", ctx) == ["KTL-000124", "₹250"]
+
+
+def test_reloading_demo_chats_clears_their_notes(admin):
+    admin.post("/api/v1/inbox/demo")
+    ch, ext = next((c["channel"], c["external_id"]) for c in admin.get("/api/v1/inbox").json()["conversations"])
+    admin.post(f"/api/v1/inbox/{ch}/{ext}/notes", json={"text": "old note"})
+    admin.post("/api/v1/inbox/demo")
+    assert admin.get(f"/api/v1/inbox/{ch}/{ext}").json()["notes"] == []

@@ -1,8 +1,8 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Activity, Bot, CircleCheck, CircleX, Gauge, IndianRupee, ShieldCheck, Timer } from "lucide-react";
+import { Activity, Bot, CircleCheck, CircleX, Gauge, IndianRupee, MessagesSquare, ShieldCheck, Timer } from "lucide-react";
 import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { agentLabel } from "@/components/brand";
+import { agentLabel, ChannelIcon, channelLabel } from "@/components/brand";
 import { ErrorNote, Stat, StatusBadge, Td, Th } from "@/components/data";
 import { EmptyState, PageHeader } from "@/components/empty";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
-import { get, qs } from "@/lib/api";
+import { get, qs, type Channel } from "@/lib/api";
 import { inr, num, pct, relativeTime, ago, titleCase } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -25,11 +25,17 @@ type Perf = {
   guards: { guard: string; fired: number; last_fired: string }[];
 };
 const axis = { fontSize: 11.5, fill: "var(--subtle-foreground)" };
-type Tab = "agents" | "traces" | "cost" | "evals" | "impact";
+type Tab = "conversations" | "agents" | "traces" | "cost" | "evals" | "impact";
+type Convs = {
+  summary: { conversations: number; automated: number; automation_rate: number | null; handed_over: number; unanswered: number; avg_messages: number; demo: number };
+  intents: { intent: string; label: string; conversations: number; share: number; automated_pct: number; handed_over_pct: number; avg_messages: number; example: string }[];
+  channels: { channel: Channel; conversations: number; automated_pct: number }[];
+  ai_sales: { orders: number; revenue: number; chats_converted: number; chats_shown_products: number; conversion_rate: number | null };
+};
 
 export function Performance() {
   const [days, setDays] = useState(30);
-  const [tab, setTab] = useState<Tab>("agents");
+  const [tab, setTab] = useState<Tab>("conversations");
   const [includeEval, setIncludeEval] = useState(false);
   const q = useQuery({ queryKey: ["perf", days, includeEval], queryFn: () => get<Perf>(`/api/v1/performance${qs({ days, include_eval: includeEval })}`),
     placeholderData: keepPreviousData });
@@ -48,11 +54,12 @@ export function Performance() {
         </>}
       </div>
       <div className="mt-6 mb-4 flex flex-wrap items-center gap-3">
-        <Segmented value={tab} onChange={setTab} options={[{ value: "agents", label: "Agents" }, { value: "traces", label: "Traces" },
+        <Segmented value={tab} onChange={setTab} options={[{ value: "conversations", label: "Conversations" }, { value: "agents", label: "Agents" }, { value: "traces", label: "Traces" },
           { value: "cost", label: "Cost" }, { value: "evals", label: "Evals" }, { value: "impact", label: "Business impact" }]} />
         <label className="ml-auto flex items-center gap-2 text-[13px] text-muted-foreground">
           <input type="checkbox" checked={includeEval} onChange={(e) => setIncludeEval(e.target.checked)} className="accent-[var(--primary)]" />Include eval runs</label>
       </div>
+      {tab === "conversations" && <ConversationsTab days={days} />}
       {tab === "agents" && q.data && <AgentsTab d={q.data} />}
       {tab === "traces" && <TracesTab days={days} includeEval={includeEval} />}
       {tab === "cost" && q.data && <CostTab d={q.data} />}
@@ -65,6 +72,51 @@ export function Performance() {
 function NoActivity() {
   return <Card><EmptyState icon={Activity} title="No AI activity in this period" body="Chat in the inbox, the agent playground or the demo store: every AI call is traced automatically." /></Card>;
 }
+
+/** What customers ask about, and how much of it the AI handles without a person. From the real message log. */
+function ConversationsTab({ days }: { days: number }) {
+  const q = useQuery({ queryKey: ["perf-convs", days], queryFn: () => get<Convs>(`/api/v1/performance/conversations${qs({ days })}`),
+    placeholderData: keepPreviousData });
+  if (q.isError) return <ErrorNote error={q.error} />;
+  if (!q.data) return <Skeleton className="h-80 rounded-2xl" />;
+  const { summary: s, intents, channels, ai_sales: sales } = q.data;
+  if (!s.conversations) return <Card><EmptyState icon={MessagesSquare} title="No conversations in this period"
+    body="Chat with the Telegram bot or the website widget (or load demo chats in the inbox): every conversation is counted here." /></Card>;
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Stat label="Conversations" value={num(s.conversations)} hint={s.demo ? `${s.demo} of them demo chats` : "from Telegram, WhatsApp and website"} />
+        <Stat label="Handled fully by AI" value={s.automation_rate == null ? "–" : pct(s.automation_rate, 0)}
+          hint={`${s.automated} by AI · ${s.handed_over} reached a person${s.unanswered ? ` · ${s.unanswered} unanswered` : ""}`} />
+        <Stat label="Messages per conversation" value={s.avg_messages.toFixed(1)} hint="customer + replies" />
+        <Stat label="Sales from AI chats" value={inr(sales.revenue)}
+          hint={`${sales.orders} orders · ${sales.chats_shown_products ? `${sales.chats_converted} of ${sales.chats_shown_products} chats with product cards bought` : "no product cards shown yet"}`} />
+      </div>
+      <Card>
+        <CardHeader title="What customers ask about" description="Each conversation is tagged with its most serious topic (rules, English + Hinglish). Safety topics should reach a person: there, a low AI share is the goal." />
+        <div className="overflow-x-auto scroll-thin"><table className="w-full min-w-[640px] text-[13px]">
+          <thead className="border-y bg-muted/50"><tr><Th>Topic</Th><Th className="text-right">Conversations</Th><Th className="w-[34%]">Handled fully by AI</Th>
+            <Th className="text-right">Reached a person</Th><Th className="text-right">Msgs</Th></tr></thead>
+          <tbody className="divide-y">{intents.map((r) => (
+            <tr key={r.intent}>
+              <Td><div className="font-semibold">{r.label}</div><div className="max-w-[340px] truncate text-[12px] text-muted-foreground" title={r.example}>“{r.example}”</div></Td>
+              <Td className="text-right tabular"><b>{r.conversations}</b> <span className="text-muted-foreground">({pct(r.share, 0)})</span></Td>
+              <Td><div className="flex items-center gap-2" title={`${Math.round(r.automated_pct * r.conversations / 100)} of ${r.conversations} handled by AI`}>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-[var(--chart-1)]" style={{ width: `${r.automated_pct}%` }} /></div>
+                <span className="w-10 text-right font-semibold tabular">{r.automated_pct.toFixed(0)}%</span></div></Td>
+              <Td className="text-right tabular">{r.handed_over_pct.toFixed(0)}%{SAFETY.has(r.intent) && r.handed_over_pct === 100 && <ShieldCheck className="ml-1 inline size-3.5 text-success" aria-label="as intended" />}</Td>
+              <Td className="text-right tabular text-muted-foreground">{r.avg_messages.toFixed(1)}</Td>
+            </tr>))}</tbody></table></div>
+      </Card>
+      <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted-foreground">
+        <span>By channel:</span>
+        {channels.map((c) => <span key={c.channel} className="flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1">
+          <ChannelIcon channel={c.channel} className="size-3.5" />{channelLabel(c.channel)} · {c.conversations} · <b className="text-foreground">{c.automated_pct.toFixed(0)}%</b> by AI</span>)}
+      </div>
+    </div>
+  );
+}
+const SAFETY = new Set(["skin_reaction", "damaged_wrong"]);
 
 function AgentsTab({ d }: { d: Perf }) {
   if (!d.agents.length) return <NoActivity />;
