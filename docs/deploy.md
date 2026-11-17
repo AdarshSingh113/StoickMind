@@ -26,7 +26,8 @@ Never commit them. Locally: `.streamlit/secrets.toml` (git-ignored) or environme
 | `WHATSAPP_ALLOWED_NUMBERS` | comma-separated test numbers, e.g. `919812345678` |
 | `KOTLER_ALLOWED_ORIGINS` | sites allowed to use the chat widget (default `*`) |
 | `KOTLER_ADMIN_PASSWORD` | dashboard login. **Required in production** (login is disabled without it) |
-| `KOTLER_SECRET_KEY` | optional: signs login cookies (default: derived from the password) |
+| `KOTLER_SECRET_KEY` | optional: signs login cookies and Buy links (default: derived from the password) |
+| `PUBLIC_BASE_URL` | your public address, e.g. `https://kotler-ai.onrender.com`. Product photos on WhatsApp and Buy buttons on Telegram/WhatsApp need it (the chat apps fetch images from it) |
 
 Generate a random secret: `python -c "import secrets; print(secrets.token_urlsafe(24))"`
 
