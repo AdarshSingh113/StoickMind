@@ -1,5 +1,5 @@
 import {
-  ArrowRight, BadgeCheck, Bot, ChartNoAxesCombined, ChevronLeft, Database, Flame, Handshake, Inbox, LifeBuoy, Lock,
+  ArrowRight, BadgeCheck, Bot, ChartNoAxesCombined, ChevronLeft, Database, Hand, Handshake, Inbox, LifeBuoy, Lock,
   Megaphone, MessageSquareText, PackageCheck, Repeat, ShieldCheck, Sparkles, Store, Wand2,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -13,7 +13,8 @@ type Module = {
   key: string; label: string[]; icon: typeof Bot; title: string; context: string[]; preview: ReactNode;
 };
 
-function Phone({ name, sub, msgs, chips }: { name: string; sub: string; msgs: Msg[]; chips?: string[] }) {
+type MiniCard = { slug: string; name: string; price: number };
+function Phone({ name, sub, msgs, chips, cards }: { name: string; sub: string; msgs: Msg[]; chips?: string[]; cards?: MiniCard[] }) {
   return (
     <div className="mx-auto w-full max-w-[330px] rounded-[28px] border bg-card p-2 shadow-[0_24px_60px_-24px_rgba(60,30,0,0.35)]">
       <div className="rounded-[22px] border bg-background">
@@ -30,6 +31,13 @@ function Phone({ name, sub, msgs, chips }: { name: string; sub: string; msgs: Ms
                 : "rounded-bl-md border bg-card")}>{m.text}</div>
             </div>
           ))}
+          {cards && <div className="flex gap-2 pt-1">{cards.map((c) => (
+            <div key={c.slug} className="w-[132px] overflow-hidden rounded-xl border bg-card">
+              <img src={`/media/products/${c.slug}.jpg`} alt="" className="aspect-square w-full object-cover" loading="lazy" />
+              <div className="p-2"><div className="line-clamp-2 text-[11px] leading-snug font-semibold">{c.name}</div>
+                <div className="mt-1 flex items-center justify-between text-[11px]"><b>₹{c.price}</b>
+                  <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-white">Buy</span></div></div>
+            </div>))}</div>}
           {chips && <div className="flex flex-wrap justify-end gap-1.5 pt-1">{chips.map((c) =>
             <span key={c} className="rounded-full border border-primary/40 bg-primary-soft px-2.5 py-1 text-[11.5px] font-medium text-primary">{c}</span>)}</div>}
         </div>
@@ -62,7 +70,9 @@ const MODULES: Module[] = [
       { from: "me", text: "oily skin ke liye koi achha face wash batao" },
       { from: "bot", text: "Oily skin ke liye Neem & Tea Tree Oil-Control Face Wash best rahega: oil control karta hai aur pores clean rakhta hai." },
       { from: "me", text: "aur serum?" },
-      { from: "bot", text: "Salicylic Acid 2% Acne Serum saath mein lo. Dono milake routine complete ho jayega ✨" }]} /> },
+      { from: "bot", text: "Salicylic Acid 2% Acne Serum saath mein lo. Dono milake routine complete ho jayega ✨" }]}
+      cards={[{ slug: "neem-tea-tree-oil-control-face-wash", name: "Neem & Tea Tree Oil-Control Face Wash", price: 299 },
+        { slug: "salicylic-acid-2-acne-serum", name: "Salicylic Acid 2% Acne Serum", price: 499 }]} /> },
   { key: "quiz", label: ["Skin", "Quiz"], icon: Wand2, title: "Ira runs a guided skin quiz",
     context: ["Ask one question at a time: feel by noon, concern, sensitivity, budget.",
       "Save the skin profile so every agent remembers it.", "End with a routine of in-stock products."],
@@ -102,8 +112,9 @@ const MODULES: Module[] = [
       { from: "bot", text: "Hi Neha! Your Vitamin C Brightening Face Wash should be running low by now. Restock today and keep that glow going ✨ Use code KTL710 for 10% off." }]}
       chips={["Shop now", "Stop offers"]} /> },
   { key: "inbox", label: ["Omnichannel", "Inbox"], icon: Inbox, title: "WhatsApp, Telegram and your website in one inbox",
-    context: ["New messages appear live.", "Take over any chat: the AI goes quiet until you hand it back.",
-      "Escalated chats are flagged so nobody waits."],
+    context: ["New messages appear live, tagged by topic. Take over any chat: the AI goes quiet until you hand it back.",
+      "An AI copilot drafts, rephrases and translates replies for your team, from real orders and policies only.",
+      "Escalated chats are flagged so nobody waits. Private notes stay inside the team."],
     preview: <Panel title="Inbox · live">{[["Ananya", "The moisturizer gave me a rash…", "Needs you"], ["Rahul", "serum ka price kya hai?", "Kavya"], ["Website visitor", "oily on the forehead, dry cheeks", "Ira"]].map(([n, t, b]) => (
       <div key={n} className="flex items-center gap-3 border-b py-2.5 last:border-0"><div className="grid size-8 place-items-center rounded-full bg-primary-soft text-[12px] font-bold text-primary">{n[0]}</div>
         <div className="min-w-0 flex-1"><div className="text-[13px] font-semibold">{n}</div><div className="truncate text-[12px] text-muted-foreground">{t}</div></div>
@@ -115,8 +126,8 @@ const MODULES: Module[] = [
       {bar("Tier 3", 100, "33.9%")}{bar("Tier 2", 59, "19.9%", "bg-ink")}{bar("Tier 1", 45, "15.4%", "bg-[var(--chart-6)]")}</div>
       <p className="mt-3 text-[12px] text-muted-foreground">Tier 3 has the highest RTO rate at 33.9% of 425 COD orders. <span className="font-semibold text-success">✓ numbers checked</span></p></Panel> },
   { key: "studio", label: ["Agent", "Studio"], icon: Bot, title: "Build and version your own agents",
-    context: ["Instructions, goal, success criteria and tools as configuration.", "Every save is a version; roll back in one click.",
-      "Test in a playground and let an LLM judge score it."],
+    context: ["Instructions, goal, success criteria and tools as configuration.", "Handoff rules: a rash, a legal threat or \"talk to a human\" always reaches a person, enforced in code.",
+      "Every save is a version; roll back in one click. Test in a playground and let an LLM judge score it."],
     preview: <Panel title="Versions · Kavya">{[["v4", "Tightened price rule", "Live"], ["v3", "Added Hinglish examples", ""], ["v2", "New tool: build_routine", ""]].map(([v, n, s]) => (
       <div key={v} className="flex items-center gap-3 border-b py-2.5 text-[13px] last:border-0"><span className="rounded-md bg-muted px-1.5 font-mono text-[12px]">{v}</span>{n}
         {s && <span className="ml-auto rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success">{s}</span>}</div>))}</Panel> },
@@ -127,8 +138,19 @@ const GUARDS = [
   { icon: Lock, title: "Limits in code", body: "Refund limits, discount caps and approvals can't be talked around." },
   { icon: Sparkles, title: "Language that matches", body: "Hinglish in, Hinglish out: detected in code, repaired if missed." },
   { icon: ChartNoAxesCombined, title: "Measured, not guessed", body: "Every AI call traced: speed, cost, safety checks, judge scores." },
-  { icon: Flame, title: "RTO before it happens", body: "A model flags risky COD orders so you confirm them first." },
+  { icon: Hand, title: "A person when it matters", body: "A rash, a legal threat or \"talk to a human\" pulls in your team, even if the model forgets." },
   { icon: Database, title: "Privacy by default", body: "Analytics can count customers but never read their phone numbers." },
+];
+
+// Real results: real-Gemini eval suites (kotler/evals) and the pytest suite that runs in CI.
+const PROOF = [["26/26", "shopping-agent evals"], ["14/14", "helpdesk evals"], ["12/12", "data questions answered"],
+  ["350+", "automated tests in CI"], ["₹0", "to run on free tiers"]];
+const SHELF = ["neem-tea-tree-oil-control-face-wash", "15-vitamin-c-glow-serum", "ceramide-barrier-repair-cream", "ultra-light-gel-sunscreen-spf-50-pa",
+  "salicylic-acid-2-acne-serum", "green-tea-pore-minimizing-toner", "hyaluronic-acid-hydration-serum", "beetroot-tinted-lip-balm"];
+const FOOTER: [string, [string, string | null][]][] = [
+  ["Product", [["Omnichannel inbox", "/app/inbox"], ["Agent Studio", "/app/studio"], ["Campaigns", "/app/campaigns"], ["AI performance", "/app/performance"]]],
+  ["Try it", [["Demo store + chat", "/store"], ["Open the dashboard", "/app"], ["Sign in", "/login"]]],
+  ["Built with", [["FastAPI · SQLite", null], ["React · TypeScript", null], ["Gemini (free tier)", null], ["scikit-learn", null]]],
 ];
 
 export function Landing() {
@@ -208,10 +230,29 @@ export function Landing() {
       </section>
 
       <section className="border-y bg-card">
-        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-5 py-12 text-center md:grid-cols-4">
-          {[["3", "AI agents, live"], ["3", "channels: WhatsApp, Telegram, web"], ["4", "retention journeys"], ["₹0", "to run on free tiers"]].map(([n, l]) => (
-            <div key={l}><div className="font-display text-[44px] font-extrabold tracking-tight text-primary">{n}</div>
-              <div className="text-[14px] text-muted-foreground">{l}</div></div>))}
+        <div className="mx-auto max-w-6xl px-5 py-12">
+          <p className="text-center text-[13px] font-semibold tracking-wide text-muted-foreground uppercase">Tested against a real model, not just demoed</p>
+          <div className="mt-6 grid grid-cols-2 gap-6 text-center md:grid-cols-5">
+            {PROOF.map(([n, l]) => (
+              <div key={l}><div className="font-display text-[40px] font-extrabold tracking-tight text-primary">{n}</div>
+                <div className="text-[13.5px] text-muted-foreground">{l}</div></div>))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-5 pt-20">
+        <div className="grid items-center gap-10 lg:grid-cols-[1fr_1.15fr]">
+          <div>
+            <h2 className="text-[34px] leading-tight font-extrabold sm:text-[42px]">From chat to checkout,<br /><span className="text-primary">every sale counted</span></h2>
+            <p className="mt-4 text-[16.5px] leading-relaxed text-muted-foreground">Product cards with photos and prices from the database, in the website chat, on Telegram and on WhatsApp.
+              The Buy button carries a signed link back to the conversation, so sales from AI chats are counted, not guessed.</p>
+          </div>
+          <div className="grid grid-cols-4 gap-3">
+            {SHELF.map((s, i) => (
+              <div key={s} className={cn("overflow-hidden rounded-2xl border bg-card shadow-card", i % 2 === 1 && "translate-y-5")}>
+                <img src={`/media/products/${s}.jpg`} alt="" className="aspect-square w-full object-cover" loading="lazy" />
+              </div>))}
+          </div>
         </div>
       </section>
 
@@ -250,11 +291,17 @@ export function Landing() {
         </div>
       </section>
 
-      <footer className="border-t">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-5 py-8 text-[13px] text-muted-foreground">
-          <Logo /><span>An open learning project. Demo data only.</span>
-          <div className="ml-auto flex gap-5"><a href="/store" className="hover:text-foreground">Demo store</a><Link to="/login" className="hover:text-foreground">Sign in</Link></div>
+      <footer className="bg-ink text-ink-foreground">
+        <div className="mx-auto grid max-w-7xl gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+          <div><Logo className="[&>div]:bg-white/10 [&>span]:text-ink-foreground" />
+            <p className="mt-4 max-w-xs text-[13.5px] leading-relaxed opacity-70">An open learning project: an AI CRM for Indian D2C brands, built end to end on free tiers. Demo data only.</p></div>
+          {FOOTER.map(([title, links]) => (
+            <div key={title}><div className="text-[13px] font-semibold tracking-wide text-primary uppercase">{title}</div>
+              <ul className="mt-4 space-y-2.5 text-[14px] opacity-80">{links.map(([label, href]) => (
+                <li key={label}>{href ? <a href={href} className="hover:text-primary">{label}</a> : label}</li>))}</ul></div>))}
         </div>
+        <div className="border-t border-white/10"><div className="mx-auto max-w-7xl px-5 py-5 text-[12.5px] opacity-60">
+          No real customers, payments or deliveries. Product images are illustrations.</div></div>
       </footer>
     </div>
   );
