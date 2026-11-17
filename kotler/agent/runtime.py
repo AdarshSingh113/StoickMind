@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from kotler import db
+from kotler.agent import handoff
 from kotler.agent.cards import product_cards
 from kotler.agent.claims import find_unbacked_claims, find_ungrounded_prices
 from kotler.agent.language import INSTRUCTION, detect_language
@@ -50,6 +51,12 @@ class AgentTurn:
     error: str | None = None
     guard: list[str] = field(default_factory=list)   # safety checks that fired (shown in the UI)
     products: list[dict] = field(default_factory=list)   # product cards for products the reply recommends
+    handoff: list[str] = field(default_factory=list)     # handoff rules that matched: a person must join
+
+    @property
+    def escalated(self) -> bool:
+        """A person needs to join: the agent escalated, or a handoff rule matched."""
+        return bool(self.handoff) or any(t.name == "escalate_to_human" and t.result.get("escalated") for t in self.tools)
 
 
 def _now() -> str:
@@ -76,11 +83,11 @@ class Agent:
             self._trace = t
             turn = self._reply(user_text)
             t.output, t.error = turn.reply, turn.error
-            t.escalated = any(x.name == "escalate_to_human" and x.result.get("escalated") for x in turn.tools)
+            t.escalated = turn.escalated
             t.status = ("error" if turn.error else "fail_safe" if any(g.startswith("fail-safe") for g in turn.guard)
                         else "corrected" if turn.guard else "ok")
             t.meta = {"tools": [x.name for x in turn.tools], "guards": turn.guard, "llm_calls": turn.llm_calls,
-                      "version": self.config.version}
+                      "version": self.config.version, "handoff": turn.handoff}
         return turn
 
     def _reply(self, user_text: str) -> AgentTurn:
@@ -147,6 +154,7 @@ class Agent:
                 self._trace.span("guard", "language_rewrite", ok=detect_language(turn.reply) == lang, detail=lang)
         except LLMError as e:
             turn.reply, turn.error = e.user_message, str(e)[:500]
+        self._apply_handoff_rules(user_text, lang, turn)
 
         turn.products = product_cards(turn.reply, [t.result for t in turn.tools])
         turn.latency_ms = int((time.perf_counter() - started) * 1000)
@@ -170,6 +178,28 @@ class Agent:
         if messages is not None:
             messages.append({"role": "tool", "tool_call_id": call_id, "content": to_json(result)})
         return result
+
+    def _apply_handoff_rules(self, user_text: str, lang: str | None, turn: AgentTurn) -> None:
+        """Handoff rules (kotler/agent/handoff.py) are guarantees, not requests: if one matches and the agent
+        didn't escalate, escalate now (or flag the chat for a person) and tell the customer."""
+        fired = handoff.triggered(self.config.handoff_rules, user_text)
+        if not fired:
+            return
+        turn.handoff = fired
+        trace = getattr(self, "_trace", None)
+        if any(t.name == "escalate_to_human" and t.result.get("escalated") for t in turn.tools):
+            if trace:
+                trace.span("guard", "handoff_rule", ok=True, detail=f"{', '.join(fired)}: the agent escalated itself")
+            return
+        when = ""
+        if "escalate_to_human" in self.allowed:
+            res = self._run_tool("escalate_to_human", {
+                "summary": f"Handoff rule ({', '.join(fired)}). Customer said: {user_text[:400]}",
+                "priority": handoff.priority(fired)}, turn)
+            when = res.get("a_human_will_reply", "") if lang in (None, "en") else ""
+        if trace:
+            trace.span("guard", "handoff_rule", ok=False, detail=", ".join(fired))
+        turn.reply = f"{turn.reply}\n\n{handoff.notice(lang, when)}".strip()
 
     def _fail_safe(self, user_text: str, issues: list[str], turn: AgentTurn) -> str:
         """The model still claims an action it didn't take. Never send that. Fail towards a human:

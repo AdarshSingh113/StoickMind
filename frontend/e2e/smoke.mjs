@@ -144,6 +144,8 @@ console.log("Agent Studio (R6)");
 await page.goto(base + "/app/studio");
 await page.getByText("Kavya").first().click();
 await page.getByRole("heading", { name: "Configuration" }).waitFor();
+ok(await page.getByRole("switch", { name: "Skin reaction or allergy" }).isChecked(), "handoff rules shown, skin reaction on by default");
+ok(await page.getByText("Product catalogue, prices and stock").isVisible(), "data access derived from the agent's tools");
 const goal = page.locator("label:has-text('Goal') textarea");
 const oldGoal = await goal.inputValue();
 await goal.fill(oldGoal + " (e2e)");

@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 
 from kotler import db
+from kotler.agent.handoff import DEFAULT_RULES, RULES
 from kotler.agent.tools import TOOLS
 
 
@@ -33,6 +34,7 @@ class AgentConfig:
     goal: str
     success_criteria: str
     tools: list[str] = field(default_factory=list)
+    handoff_rules: list[str] = field(default_factory=lambda: list(DEFAULT_RULES))   # see kotler/agent/handoff.py
     description: str = ""
     temperature: float = 0.3
     max_steps: int = 5
@@ -42,12 +44,40 @@ class AgentConfig:
     updated_at: str = ""
 
 
+# What each tool lets an agent see or change. Agent Studio derives an agent's data access from its tools, so the
+# panel can never drift from what the agent can really do. Limits are enforced inside the tools (kotler/policy.py).
+def data_access() -> dict[str, dict]:
+    from kotler import policy
+    rows = {
+        "search_products": ("Product catalogue, prices and stock", "reads"),
+        "get_product_details": ("Product catalogue, prices and stock", "reads"),
+        "compare_products": ("Product catalogue, prices and stock", "reads"),
+        "build_routine": ("Product catalogue, prices and stock", "reads"),
+        "get_my_profile": ("The signed-in customer's profile (skin type, past purchases)", "reads"),
+        "save_skin_profile": ("The signed-in customer's skin profile", "changes"),
+        "search_policies": ("Store policies (returns, refunds, shipping)", "reads"),
+        "verify_order": ("Guest check: order number + last 4 phone digits, "
+                         f"locked after {policy.MAX_VERIFY_ATTEMPTS} failed tries", "reads"),
+        "list_my_orders": ("The verified customer's own orders only", "reads"),
+        "get_order_status": ("The verified customer's own orders only", "reads"),
+        "cancel_order": ("Cancel the customer's order, only before it ships", "changes"),
+        "offer_discount": (f"One coupon for the next order, at most {policy.MAX_DISCOUNT_PCT}%", "changes"),
+        "report_damaged_item": (f"Replacements; orders above ₹{policy.REPLACEMENT_AUTO_LIMIT:,.0f} need a person's "
+                                "approval", "changes"),
+        "request_refund": (f"Refunds up to ₹{policy.AUTO_REFUND_LIMIT:,.0f}; above that, or COD, a person approves",
+                           "changes"),
+        "escalate_to_human": ("Helpdesk tickets: hands the chat to the care team", "changes"),
+    }
+    return {tool: {"data": data, "access": access} for tool, (data, access) in rows.items()}
+
+
 class AgentValidationError(ValueError):
     pass
 
 
-EDITABLE = ["name", "role", "description", "instructions", "goal", "success_criteria", "tools",
+EDITABLE = ["name", "role", "description", "instructions", "goal", "success_criteria", "tools", "handoff_rules",
             "temperature", "max_steps"]
+JSON_FIELDS = ("tools", "handoff_rules")
 
 
 def validate(cfg: AgentConfig) -> None:
@@ -62,6 +92,9 @@ def validate(cfg: AgentConfig) -> None:
     unknown = [t for t in cfg.tools if t not in TOOLS]
     if unknown:
         errors.append(f"Unknown tools: {', '.join(unknown)}.")
+    bad_rules = [r for r in cfg.handoff_rules if r not in RULES]
+    if bad_rules:
+        errors.append(f"Unknown handoff rules: {', '.join(bad_rules)}.")
     if not 0 <= cfg.temperature <= 1:
         errors.append("Temperature must be between 0 and 1.")
     if not 1 <= cfg.max_steps <= 8:
@@ -80,6 +113,10 @@ def _now() -> str:
 def _from_row(row: dict) -> AgentConfig:
     row = dict(row)
     row["tools"] = json.loads(row["tools"])
+    # NULL = saved before handoff rules existed: use the defaults (built-ins get their own).
+    rules = row.get("handoff_rules")
+    builtin = next((b for b in BUILTINS if b.slug == row["slug"]), None)
+    row["handoff_rules"] = json.loads(rules) if rules else list(builtin.handoff_rules if builtin else DEFAULT_RULES)
     row["is_builtin"] = bool(row["is_builtin"])
     return AgentConfig(**row)
 
@@ -101,10 +138,10 @@ def save_agent(cfg: AgentConfig, note: str = "") -> AgentConfig:
     validate(cfg)
     current = db.query_one("SELECT version FROM agents WHERE slug = ?", (cfg.slug,))
     cfg = replace(cfg, version=(current["version"] + 1) if current else 1, updated_at=_now(),
-                  tools=list(dict.fromkeys(cfg.tools)))
+                  tools=list(dict.fromkeys(cfg.tools)), handoff_rules=list(dict.fromkeys(cfg.handoff_rules)))
     data = asdict(cfg)
     cols = list(data)
-    vals = [json.dumps(v) if k == "tools" else (int(v) if k == "is_builtin" else v) for k, v in data.items()]
+    vals = [json.dumps(v) if k in JSON_FIELDS else (int(v) if k == "is_builtin" else v) for k, v in data.items()]
     # A real UPSERT. Not "INSERT OR REPLACE": that DELETES the old row first, which fires
     # ON DELETE CASCADE and silently wipes the agent's whole version history.
     updates = ", ".join(f"{c} = excluded.{c}" for c in cols if c != "slug")
@@ -138,7 +175,7 @@ def restore(slug: str, version: int) -> AgentConfig:
         raise AgentValidationError(f"Version {version} of '{slug}' not found.")
     snap = json.loads(row["snapshot"])
     current = get_agent(slug)
-    restored = replace(current, **{k: snap[k] for k in EDITABLE})
+    restored = replace(current, **{k: snap[k] for k in EDITABLE if k in snap})
     return save_agent(restored, note=f"Restored version {version}")
 
 
@@ -163,7 +200,7 @@ def delete_agent(slug: str) -> None:
 
 def diff(old: dict, new: dict) -> list[str]:
     """Names of fields that changed between two snapshots."""
-    return [k for k in EDITABLE if old.get(k) != new.get(k)]
+    return [k for k in EDITABLE if k in old and k in new and old[k] != new[k]]
 
 
 # ------------------------------------------------------------ built-in agents
@@ -174,6 +211,7 @@ KAVYA = AgentConfig(
     success_criteria="The customer receives suitable, in-stock recommendations that respect their budget and skin type, "
                      "and shows buying intent (asks how to order, picks a product, or asks a follow-up about it).",
     tools=["search_products", "get_product_details", "compare_products", "build_routine", "get_my_profile"],
+    handoff_rules=["skin_reaction", "asks_for_person", "legal_threat"],
     instructions="""- For ANY product recommendation, availability or price question, call a tool first. Never answer from memory.
 - search_products for "suggest / which / do you have" questions. build_routine for full routines.
   get_product_details before answering detailed questions about one product (usage, warnings).
@@ -227,6 +265,7 @@ ASHA = AgentConfig(
                      "and the customer is told clearly what happens next and by when.",
     tools=["search_policies", "verify_order", "list_my_orders", "get_order_status", "cancel_order", "offer_discount",
            "report_damaged_item", "request_refund", "escalate_to_human", "get_my_profile"],
+    handoff_rules=["skin_reaction", "asks_for_person", "legal_threat", "angry"],
     instructions="""Start by understanding the issue. Be warm and brief; apologise once when something went wrong.
 
 Identity

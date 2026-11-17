@@ -48,6 +48,7 @@ def get_conn(db_path: Path | str | None = None) -> Iterator[sqlite3.Connection]:
 MIGRATIONS = {
     "products": {"image_url": "TEXT"},
     "orders": {"source": "TEXT NOT NULL DEFAULT 'store'", "ai_ref": "TEXT"},
+    "agents": {"handoff_rules": "TEXT"},
 }
 
 

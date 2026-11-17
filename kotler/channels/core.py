@@ -247,10 +247,9 @@ def handle_incoming(msg: Incoming, llm=None) -> Outgoing:
     agent.ctx.verify_attempts = session["verify_attempts"]
     turn = agent.reply(text)
     # Persist what the agent learned (verification!) and which conversation/agent we're in.
-    escalated = any(t.name == "escalate_to_human" and t.result.get("escalated") for t in turn.tools)
     _update_session(msg.channel, msg.external_id, agent_slug=slug, conversation_id=agent.conversation_id,
                     customer_id=agent.ctx.customer_id, verify_attempts=agent.ctx.verify_attempts,
-                    **({"needs_human": 1} if escalated else {}))
+                    **({"needs_human": 1} if turn.escalated else {}))
     return reply(split_message(turn.reply, MAX_CHARS.get(msg.channel, 4000)), slug, turn.products)
 
 

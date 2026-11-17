@@ -46,8 +46,10 @@ def list_agents() -> dict:
 def meta() -> dict:
     from kotler.agent.tools import TOOLS, WRITE_TOOLS
     import kotler.agent.support_tools  # noqa: F401  (registers the helpdesk tools)
+    from kotler.agent.handoff import catalog
     return {"tools": [{"name": n, "description": spec["function"]["description"], "writes": n in WRITE_TOOLS}
                       for n, (_, spec) in TOOLS.items()],
+            "handoff_rules": catalog(), "data_access": S.data_access(),
             "templates": {k: asdict(v) for k, v in S.TEMPLATES.items()}}
 
 
@@ -69,6 +71,7 @@ class AgentIn(BaseModel):
     goal: str
     success_criteria: str
     tools: list[str] = Field(default_factory=list)
+    handoff_rules: list[str] | None = None          # None = keep the current rules
     temperature: float = 0.3
     max_steps: int = 5
     note: str = Field("", max_length=200)
@@ -79,6 +82,8 @@ def update(slug: str, body: AgentIn) -> dict:
     cfg = _get(slug)
     data = body.model_dump()
     note = data.pop("note")
+    if data["handoff_rules"] is None:
+        data.pop("handoff_rules")
     try:
         saved = S.save_agent(replace(cfg, **data), note=note or "Edited in Agent Studio")
     except S.AgentValidationError as e:
@@ -161,7 +166,7 @@ def chat(slug: str, body: ChatIn) -> dict:
     return {"conversation_id": agent.conversation_id, "reply": turn.reply, "error": turn.error, "guard": turn.guard,
             "tools": [{"name": t.name, "arguments": t.arguments, "result": t.result} for t in turn.tools],
             "latency_ms": turn.latency_ms, "tokens": turn.prompt_tokens + turn.completion_tokens,
-            "cards": turn.products}
+            "cards": turn.products, "handoff": turn.handoff}
 
 
 class JudgeIn(BaseModel):

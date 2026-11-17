@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowUp, Bot, Gavel, History, Plus, RotateCcw, Save, ShieldCheck, Trash2, Wrench } from "lucide-react";
+import { ArrowLeft, ArrowUp, Bot, CircleCheck, Eye, Gavel, Hand, History, Lock, PenLine, Plus, RotateCcw, Save, ShieldCheck, Trash2, TriangleAlert, Wrench } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
@@ -16,9 +16,10 @@ import { num, pct, ago } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type AgentCfg = { slug: string; name: string; role: string; description: string; instructions: string; goal: string; success_criteria: string;
-  tools: string[]; temperature: number; max_steps: number; status: "draft" | "live"; version: number; is_builtin: boolean; updated_at: string };
+  tools: string[]; handoff_rules: string[]; temperature: number; max_steps: number; status: "draft" | "live"; version: number; is_builtin: boolean; updated_at: string };
 type AgentRow = AgentCfg & { score: { judged: number; success: number; score: number } | null; conversations: number };
-type Meta = { tools: { name: string; description: string; writes: boolean }[]; templates: Record<string, AgentCfg> };
+type Meta = { tools: { name: string; description: string; writes: boolean }[]; templates: Record<string, AgentCfg>;
+  handoff_rules: { key: string; label: string; examples: string }[]; data_access: Record<string, { data: string; access: "reads" | "changes" }> };
 type Version = { version: number; note: string | null; created_at: string; changes: string[] };
 
 export function Studio() {
@@ -124,6 +125,8 @@ export function AgentEditor() {
                     <p className="mt-0.5 line-clamp-2 text-[12px] text-muted-foreground">{t.description}</p></div>
                 </label>);
             })}</CardBody></Card>
+          {meta.data && <Handoff cfg={cfg} meta={meta.data} onChange={(r) => set("handoff_rules", r)} />}
+          {meta.data && <DataAccess tools={cfg.tools} meta={meta.data} />}
           <div className="sticky bottom-3 z-10 flex items-center gap-2 rounded-2xl border bg-card/95 p-3 shadow-lg backdrop-blur">
             <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="What changed? (version note)" maxLength={200} className="flex-1" />
             <Button variant="ghost" disabled={!dirty} onClick={() => setCfg(q.data.agent)}>Discard</Button>
@@ -151,7 +154,51 @@ export function AgentEditor() {
   );
 }
 
-type ChatTurn = { me: string; reply?: string; tools?: { name: string; arguments: Record<string, unknown>; result: Record<string, unknown> }[]; guard?: string[]; latency_ms?: number; error?: string | null; cards?: ProductCard[] };
+/** Situations where a person must take over. Enforced in code (kotler/agent/handoff.py), not just asked for. */
+function Handoff({ cfg, meta, onChange }: { cfg: AgentCfg; meta: Meta; onChange: (rules: string[]) => void }) {
+  const canEscalate = cfg.tools.includes("escalate_to_human");
+  return (
+    <Card><CardHeader title="Hand over to a person when…" description="Checked in code on every customer message. If one matches and the agent didn't escalate by itself, it is escalated anyway and the customer is told a person will reply." />
+      <CardBody className="space-y-2">
+        {meta.handoff_rules.map((r) => {
+          const on = cfg.handoff_rules.includes(r.key);
+          return (
+            <label key={r.key} className="flex cursor-pointer items-center gap-3 rounded-xl border p-3 hover:bg-muted/40">
+              <span className="min-w-0 flex-1"><span className="block text-[13.5px] font-semibold">{r.label}</span>
+                <span className="block text-[12px] text-muted-foreground">{r.examples}</span></span>
+              <input type="checkbox" role="switch" aria-label={r.label} checked={on} className="peer sr-only"
+                onChange={() => onChange(on ? cfg.handoff_rules.filter((x) => x !== r.key) : [...cfg.handoff_rules, r.key])} />
+              <span aria-hidden className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors peer-focus-visible:ring-3 peer-focus-visible:ring-ring/30", on ? "bg-primary" : "bg-muted-foreground/30")}>
+                <span className={cn("absolute top-0.5 size-4 rounded-full bg-white shadow transition-all", on ? "left-[18px]" : "left-0.5")} /></span>
+            </label>);
+        })}
+        <p className="flex items-start gap-1.5 pt-1 text-[12px] text-muted-foreground"><Hand className="mt-0.5 size-3.5 shrink-0" />
+          {canEscalate ? "This agent can create a care ticket, so matching chats get a ticket and show as “Needs you” in the inbox."
+            : "This agent has no escalate_to_human tool: matching chats are flagged “Needs you” in the inbox."}</p>
+      </CardBody></Card>
+  );
+}
+
+/** Derived from the ticked tools, so it can never drift from what the agent can really do. */
+function DataAccess({ tools, meta }: { tools: string[]; meta: Meta }) {
+  const pick = (a: "reads" | "changes") => [...new Set(tools.map((t) => meta.data_access[t]).filter((d) => d?.access === a).map((d) => d.data))];
+  const reads = pick("reads"), changes = pick("changes");
+  return (
+    <Card><CardHeader title="What this agent can see and change" description="Worked out from its tools. Limits are enforced inside the tools, whatever the prompt says." />
+      <CardBody className="grid gap-4 sm:grid-cols-2">
+        <div><div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground"><Eye className="size-3.5" />Can read</div>
+          <ul className="space-y-1.5 text-[13px]">{reads.length ? reads.map((d) => <li key={d} className="flex gap-2"><CircleCheck className="mt-0.5 size-3.5 shrink-0 text-success" />{d}</li>)
+            : <li className="text-muted-foreground">Nothing: tick a tool</li>}</ul></div>
+        <div><div className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground"><PenLine className="size-3.5" />Can change</div>
+          <ul className="space-y-1.5 text-[13px]">{changes.length ? changes.map((d) => <li key={d} className="flex gap-2"><TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" />{d}</li>)
+            : <li className="flex gap-2 text-muted-foreground"><Lock className="mt-0.5 size-3.5 shrink-0" />Nothing: read-only agent</li>}</ul></div>
+        <p className="flex gap-2 rounded-xl bg-muted/60 p-3 text-[12.5px] text-muted-foreground sm:col-span-2"><Lock className="mt-0.5 size-3.5 shrink-0" />
+          No agent can see other customers' orders or profiles (every order tool checks ownership), run database queries, or see payment details (none are stored).</p>
+      </CardBody></Card>
+  );
+}
+
+type ChatTurn = { me: string; reply?: string; tools?: { name: string; arguments: Record<string, unknown>; result: Record<string, unknown> }[]; guard?: string[]; handoff?: string[]; latency_ms?: number; error?: string | null; cards?: ProductCard[] };
 
 function Playground({ slug, dirty }: { slug: string; dirty: boolean }) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
@@ -181,6 +228,7 @@ function Playground({ slug, dirty }: { slug: string; dirty: boolean }) {
               {t.tools?.map((x, j) => <details key={j} className="rounded-xl border border-dashed px-3 py-1.5 text-[12px]"><summary className="cursor-pointer text-muted-foreground"><Wrench className="mr-1 inline size-3.5" />{x.name}</summary>
                 <pre className="mt-1 overflow-x-auto text-[11px] whitespace-pre-wrap">{JSON.stringify(x.arguments)}{"\n→ "}{JSON.stringify(x.result).slice(0, 600)}</pre></details>)}
               {t.guard?.length ? <p className="text-[11.5px] text-warning"><ShieldCheck className="mr-1 inline size-3.5" />{t.guard.join("; ")}</p> : null}
+              {t.handoff?.length ? <p className="text-[11.5px] text-danger"><Hand className="mr-1 inline size-3.5" />Handoff rule: {t.handoff.map((h) => h.replace(/_/g, " ")).join(", ")}. A person will join.</p> : null}
               {t.reply !== undefined && <ProductCards cards={t.cards} />}
               {t.reply !== undefined ? <div className="flex"><div className="max-w-[85%] rounded-2xl rounded-bl-md border bg-card px-3.5 py-2 text-[13.5px] whitespace-pre-wrap">{t.reply}
                 <div className="mt-1 text-[10.5px] text-subtle-foreground">{((t.latency_ms ?? 0) / 1000).toFixed(1)}s</div></div></div>

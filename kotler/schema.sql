@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS agents (
     goal              TEXT NOT NULL,               -- "Agent's goal"
     success_criteria  TEXT NOT NULL,               -- "Success criteria" (also used by the judge)
     tools             TEXT NOT NULL,               -- JSON list of allowed tool names
+    handoff_rules     TEXT,                        -- JSON list: when a person must take over (NULL = defaults)
     temperature       REAL NOT NULL DEFAULT 0.3,
     max_steps         INTEGER NOT NULL DEFAULT 5,
     status            TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'live')),
