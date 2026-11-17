@@ -159,7 +159,7 @@ def test_impact_counts_unescalated_helpdesk_conversations():
     df = impact.impact(30)
     support = df[df.lever.str.startswith("Support")].iloc[0]
     assert support["count"] == 2 and support.inr == 2 * impact.HUMAN_COST_PER_CONVERSATION
-    assert support.evidence == "measured" and set(df.evidence) <= {"measured", "modelled", "simulated"}
+    assert support.evidence == "measured" and set(df.evidence) <= {"measured", "modelled", "simulated", "revenue"}
 
 
 # ------------------------------------------------------------------ ask your data: guardrails

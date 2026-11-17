@@ -88,6 +88,7 @@ def test_old_rows_get_defaults_and_old_snapshots_restore_cleanly():
     with db.get_conn() as conn:
         conn.execute("UPDATE agents SET handoff_rules = NULL")
     assert S.get_agent("asha").handoff_rules == S.ASHA.handoff_rules
+    assert {a.slug: a.handoff_rules for a in S.list_agents()}["asha"] == S.ASHA.handoff_rules   # pandas path: NaN
     assert S.get_agent("kavya").handoff_rules == ["skin_reaction", "asks_for_person", "legal_threat"]
     v1 = S.versions("asha")[-1]
     with db.get_conn() as conn:                     # a snapshot saved before handoff rules existed

@@ -71,8 +71,8 @@ def order_frame(statuses: tuple | None = None) -> pd.DataFrame:
         FROM orders o JOIN pincodes p ON p.pincode = o.shipping_pincode JOIN customers c ON c.id = o.customer_id
         WHERE o.status != 'cancelled'
         ORDER BY o.customer_id, o.created_at""")
-    df["created_at"] = pd.to_datetime(df.created_at)
-    df["expected_delivery"] = pd.to_datetime(df.expected_delivery)
+    df["created_at"] = pd.to_datetime(df.created_at, format="mixed")
+    df["expected_delivery"] = pd.to_datetime(df.expected_delivery, format="mixed")   # older checkout rows: date only
 
     # Customer history known at order time: earlier orders whose outcome was known by then.
     prior_orders, prior_delivered, prior_rto = [], [], []

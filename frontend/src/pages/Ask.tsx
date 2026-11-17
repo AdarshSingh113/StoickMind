@@ -100,6 +100,7 @@ export function Ask() {
   const [text, setText] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const ask = useMutation({
+    meta: { inlineError: true },
     mutationFn: (question: string) => post<Answer>("/api/v1/ask", { question, history: history.slice(-3).map((h) => ({ question: h.question, sql: h.sql })) }),
     onSuccess: (a) => { setHistory((h) => [...h, a]); setText(""); },
   });

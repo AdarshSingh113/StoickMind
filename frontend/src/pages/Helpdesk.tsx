@@ -90,7 +90,7 @@ function Transcript({ lines }: { lines: Line[] }) {
 function TicketPanel({ id }: { id: number }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["ticket", id], queryFn: () => get<TicketDetail>(`/api/v1/helpdesk/tickets/${id}`) });
-  const run = useMutation({ mutationFn: () => post<{ outcome: string; transcript: Line[]; guard: string[] }>(`/api/v1/helpdesk/tickets/${id}/ai`),
+  const run = useMutation({ meta: { inlineError: true }, mutationFn: () => post<{ outcome: string; transcript: Line[]; guard: string[] }>(`/api/v1/helpdesk/tickets/${id}/ai`),
     onSuccess: (r) => { toast.success(r.outcome === "resolved" ? "The AI resolved this ticket." : r.outcome === "escalated" ? "The AI escalated this to a person." : "The AI couldn't finish."); qc.invalidateQueries({ queryKey: ["ticket", id] }); qc.invalidateQueries({ queryKey: ["helpdesk"] }); } });
   if (!q.data) return <Skeleton className="h-64" />;
   const { ticket: t } = q.data;

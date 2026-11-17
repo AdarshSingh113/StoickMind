@@ -109,7 +109,7 @@ def place_order(product_id: int, quantity: int, name: str, phone: str, pincode: 
             "shipping_fee, total, shipping_address, shipping_pincode, address_quality, expected_delivery, source, ai_ref) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (number, customer_id, now.strftime(FMT), "placed", payment, subtotal, 0, shipping, subtotal + shipping,
-             full_address, pin["pincode"], quality, (now + timedelta(days=5)).strftime("%Y-%m-%d"),
+             full_address, pin["pincode"], quality, (now + timedelta(days=5)).strftime(FMT),
              "ai_chat" if attributed else "store", ref if attributed else None)).lastrowid
         conn.execute("INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES (?,?,?,?)",
                      (order_id, product_id, quantity, p["price"]))

@@ -289,12 +289,12 @@ function EvalsTab() {
 function ImpactTab({ days }: { days: number }) {
   const q = useQuery({ queryKey: ["impact", days], queryFn: () => get<{ levers: { lever: string; inr: number; period: string; evidence: string; how: string }[]; measured_total: number; assumptions: { human_cost_per_conversation: number } }>(`/api/v1/performance/impact?days=${days}`) });
   if (!q.data) return <Skeleton className="h-64 rounded-2xl" />;
-  const tone = { measured: "good", modelled: "primary", simulated: "warn" } as const;
+  const tone = { measured: "good", modelled: "primary", simulated: "warn", revenue: "neutral" } as const;
   return (
     <div className="space-y-4">
       <div className="rounded-3xl bg-ink p-6 text-ink-foreground"><div className="text-[13px] opacity-70">Measured net value · last {days} days</div>
         <div className="mt-1 font-display text-[40px] font-extrabold tracking-tight text-primary">{inr(q.data.measured_total)}</div>
-        <p className="text-[13px] opacity-70">Only measured values are added up. Modelled and simulated values are shown separately, never mixed in.</p></div>
+        <p className="text-[13px] opacity-70">Only measured savings are added up. Modelled and simulated values, and revenue (which isn't profit), are shown separately, never mixed in.</p></div>
       <div className="grid gap-4 md:grid-cols-2">{q.data.levers.map((l) => (
         <Card key={l.lever} className="p-5"><div className="flex items-start justify-between gap-3"><h3 className="font-bold">{l.lever}</h3><Badge tone={tone[l.evidence as keyof typeof tone] ?? "neutral"}>{l.evidence}</Badge></div>
           <div className={cn("mt-2 font-display text-[28px] font-extrabold tabular", l.inr < 0 && "text-danger")}>{inr(l.inr)}</div>

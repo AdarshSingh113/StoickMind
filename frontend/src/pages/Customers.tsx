@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Search, UsersRound } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, Sparkles, UsersRound } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { ErrorNote, Td, Th } from "@/components/data";
 import { EmptyState, PageHeader } from "@/components/empty";
 import { Avatar } from "@/components/ui/avatar";
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 export type CustomerRow = {
   id: number; name: string; city: string; state: string; tier: number; skin_type: string | null; language: string;
-  channel: string; created_at: string; orders: number; lifetime_value: number; last_order_at: string | null;
+  channel: string; created_at: string; orders: number; ai_orders: number; lifetime_value: number; last_order_at: string | null;
   segment: string | null; churn_risk: number | null; clv_12m: number | null; value_at_risk: number | null;
 };
 type Seg = { segment: string; customers: number; churn_risk: number; value_at_risk: number };
@@ -37,12 +37,14 @@ export function Customers() {
   const [debounced, setDebounced] = useState("");
   const [segment, setSegment] = useState<string | null>(null);
   const [tier, setTier] = useState<number | null>(null);
+  const [params] = useSearchParams();
+  const [viaAi, setViaAi] = useState(params.get("via") === "ai");
   const [sort, setSort] = useState("value");
   const [page, setPage] = useState(1);
   useEffect(() => { const t = setTimeout(() => { setDebounced(q.trim()); setPage(1); }, 250); return () => clearTimeout(t); }, [q]);
   const data = useQuery({
-    queryKey: ["customers", debounced, segment, tier, sort, page],
-    queryFn: () => get<ListResp>(`/api/v1/customers${qs({ q: debounced, segment, tier, sort, page, page_size: 25 })}`),
+    queryKey: ["customers", debounced, segment, tier, viaAi, sort, page],
+    queryFn: () => get<ListResp>(`/api/v1/customers${qs({ q: debounced, segment, tier, via_ai: viaAi || null, sort, page, page_size: 25 })}`),
     placeholderData: keepPreviousData,
   });
   const d = data.data;
@@ -64,6 +66,9 @@ export function Customers() {
             <Search className="pointer-events-none absolute top-2.5 left-3.5 size-4 text-subtle-foreground" />
             <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, city, phone or email" className="pl-10" />
           </div>
+          <button onClick={() => { setViaAi(!viaAi); setPage(1); }} aria-pressed={viaAi}
+            className={cn("flex h-9 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-[13px]", viaAi ? "border-primary bg-primary-soft font-semibold text-primary" : "bg-card text-muted-foreground hover:text-foreground")}>
+            <Sparkles className="size-3.5" />Bought via AI chat</button>
           <select value={tier ?? ""} onChange={(e) => { setTier(e.target.value ? Number(e.target.value) : null); setPage(1); }} aria-label="City tier"
             className="h-9 rounded-full border bg-card px-3 text-[13px]"><option value="">All tiers</option><option value="1">Tier 1 (metro)</option>
             <option value="2">Tier 2</option><option value="3">Tier 3</option></select>
@@ -83,7 +88,7 @@ export function Customers() {
                 : d.customers.map((c) => (
                 <tr key={c.id} onClick={() => navigate(`/app/customers/${c.id}`)} className={cn("cursor-pointer hover:bg-muted/50", data.isFetching && "opacity-70")}>
                   <Td><div className="flex items-center gap-3"><Avatar name={c.name} seed={`c${c.id}`} className="size-8 text-[12px]" />
-                    <div><div className="font-semibold">{c.name}</div><div className="text-[12px] text-muted-foreground">{c.city} · Tier {c.tier}{c.skin_type ? ` · ${titleCase(c.skin_type)}` : ""}</div></div></div></Td>
+                    <div><div className="flex items-center gap-1.5 font-semibold">{c.name}{c.ai_orders > 0 && <Sparkles className="size-3.5 text-primary" aria-label="bought via AI chat" />}</div><div className="text-[12px] text-muted-foreground">{c.city} · Tier {c.tier}{c.skin_type ? ` · ${titleCase(c.skin_type)}` : ""}</div></div></div></Td>
                   <Td>{c.segment && <Badge tone={SEG_TONE[c.segment] ?? "neutral"}>{c.segment}</Badge>}</Td>
                   <Td className="text-right tabular">{num(c.orders)}</Td>
                   <Td className="text-right font-semibold tabular">{inr(c.lifetime_value)}</Td>

@@ -101,7 +101,8 @@ def campaign(cid: int) -> dict:
                               JOIN customers cu ON cu.id = m.customer_id WHERE m.campaign_id = ? AND m.grp IN ('A','B')
                               ORDER BY m.grp, m.customer_id LIMIT 6""", (cid,))
     results = None
-    if camp["status"] == "measured":
+    if camp["status"] == "measured" and db.query_one(
+            "SELECT COUNT(*) AS n FROM campaign_members WHERE campaign_id = ? AND converted IS NOT NULL", (cid,))["n"]:
         r = stats.analyze(cid)
         results = {**{k: v for k, v in r.items() if k not in ("groups", "ab")}, "groups": records(r["groups"]),
                    "ab": r["ab"], "verdict": stats.verdict(r)}
@@ -117,6 +118,10 @@ def send(cid: int) -> dict:
         raise HTTPException(404, "Campaign not found.")
     if camp["status"] != "draft":
         raise HTTPException(409, "Already sent.")
+    if not db.query_one("SELECT COUNT(*) AS n FROM campaign_members WHERE campaign_id = ? AND grp IN ('A', 'B')",
+                        (cid,))["n"]:
+        raise HTTPException(409, "Nobody to send to: every customer in this audience was excluded (see the reasons "
+                                 "below, e.g. the 7-day frequency cap).")
     return {"sent": C.send_campaign(cid)}
 
 

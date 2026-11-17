@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Bot, CircleAlert, Clock, Headset, Lightbulb, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Bot, CircleAlert, Clock, Headset, Lightbulb, ShieldCheck, ShoppingBag, Sparkles, TrendingUp } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router";
 import {
@@ -216,11 +216,13 @@ function OperationsCard({ d }: { d: Data }) {
     { icon: CircleAlert, label: "Open support tickets", value: num(d.support.open), alert: false },
     { icon: ShieldCheck, label: "AI actions awaiting approval", value: num(d.support.pending_approvals), alert: d.support.pending_approvals > 0 },
     { icon: Bot, label: "AI replies this period", value: num(d.ai.agent_turns), hint: d.ai.agent_turns ? `p95 ${d.ai.p95_s.toFixed(1)}s · ${inr(d.ai.cost_inr)} est.` : "none yet" },
+    { icon: ShoppingBag, label: "Sales from AI chats", value: inr(d.ai_sales.revenue), to: "/app/customers?via=ai",
+      hint: d.ai_sales.chats_shown_products ? `${d.ai_sales.orders} orders · ${d.ai_sales.chats_converted} of ${d.ai_sales.chats_shown_products} chats with product cards bought` : "no product cards shown yet" },
     { icon: Clock, label: "Avg ticket resolution", value: `${d.support.avg_resolution_hours.toFixed(0)} h` },
   ];
   return (
     <Card className="lg:col-span-2 xl:col-span-1">
-      <CardHeader title="Operations" description="What needs attention right now" />
+      <CardHeader title="Operations" description="What needs attention, and what the AI did" />
       <CardBody className="divide-y">
         {rows.map((r) => {
           const body = (

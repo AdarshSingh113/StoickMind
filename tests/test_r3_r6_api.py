@@ -119,7 +119,7 @@ def test_performance_endpoints(admin, monkeypatch):
     assert admin.get("/api/v1/performance/traces/99999").status_code == 404
     assert "runs" in admin.get("/api/v1/performance/evals").json()
     imp = admin.get("/api/v1/performance/impact").json()
-    assert {l["evidence"] for l in imp["levers"]} <= {"measured", "modelled", "simulated"}
+    assert {l["evidence"] for l in imp["levers"]} <= {"measured", "modelled", "simulated", "revenue"}
 
 
 def test_trace_steps_keep_their_order():
@@ -235,3 +235,46 @@ def test_playground_and_judge(admin, monkeypatch):
     assert admin.post("/api/v1/agents/asha/chat", json={"message": "x", "conversation_id": first["conversation_id"]}).status_code == 404
     v = admin.post("/api/v1/agents/kavya/judge", json={"conversation_id": first["conversation_id"]}).json()
     assert v["achieved"] is True and v["score"] == 5
+
+
+def test_sales_from_ai_chats_everywhere(admin, monkeypatch):
+    """One order from a signed AI-chat link shows up on Overview, Customers, Customer 360 and Business impact."""
+    from kotler import store
+    p = db.query_one("SELECT id, price FROM products WHERE stock > 5 LIMIT 1")
+    pincode = db.query_one("SELECT pincode FROM pincodes LIMIT 1")["pincode"]
+    order = store.place_order(product_id=p["id"], quantity=1, name="Riya Sen", phone="9876501234",
+                              address="12 Lajpat Nagar, Block C", pincode=pincode, payment="prepaid",
+                              ref="telegram:42", sig=store.sign("telegram:42"))
+    cid = db.query_one("SELECT customer_id FROM orders WHERE order_number = ?", (order["order_number"],))["customer_id"]
+
+    sales = admin.get("/api/v1/overview?days=30").json()["ai_sales"]
+    assert sales["orders"] == 1 and sales["revenue"] == order["total"]          # price + shipping
+    via = admin.get("/api/v1/customers?via_ai=true").json()
+    assert via["total"] == 1 and via["customers"][0]["id"] == cid and via["customers"][0]["ai_orders"] == 1
+    assert admin.get("/api/v1/customers").json()["total"] > 1
+    assert admin.get(f"/api/v1/customers/{cid}").json()["orders"][0]["source"] == "ai_chat"
+
+    imp = admin.get("/api/v1/performance/impact?days=30").json()
+    lever = next(l for l in imp["levers"] if l["lever"].startswith("Sales from AI chats"))
+    assert lever["evidence"] == "revenue" and lever["inr"] == order["total"]
+    measured = sum(l["inr"] for l in imp["levers"] if l["evidence"] == "measured")
+    assert imp["measured_total"] == pytest.approx(measured)               # revenue is never added to the total
+
+
+def test_ask_cannot_read_which_chat_bought(admin):
+    from kotler.analytics import ask
+    with pytest.raises(ask.UnsafeQuery, match="orders.ai_ref"):        # for WhatsApp it is a phone number
+        ask.run_sql("SELECT ai_ref FROM orders")
+    assert len(ask.run_sql("SELECT source, COUNT(*) AS n FROM orders GROUP BY source")) >= 1
+
+
+def test_campaign_where_everyone_is_excluded_cannot_be_sent(admin):
+    body = {"name": "Win-back", "journey": "win_back", "templates": _templates(admin), "template_source": "fallback",
+            "offer_pct": 10, "holdout_pct": 0.2}
+    cid = admin.post("/api/v1/campaigns", json=body).json()["id"]
+    with db.get_conn() as conn:             # e.g. after several campaigns this week: the frequency cap excludes all
+        conn.execute("UPDATE campaign_members SET grp = 'excluded', exclusion_reason = 'already messaged in the last "
+                     "7 days' WHERE campaign_id = ?", (cid,))
+    r = admin.post(f"/api/v1/campaigns/{cid}/send")
+    assert r.status_code == 409 and "Nobody to send to" in r.json()["detail"]
+    assert admin.get(f"/api/v1/campaigns/{cid}").json()["campaign"]["status"] == "draft"

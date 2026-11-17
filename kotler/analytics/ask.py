@@ -38,7 +38,8 @@ PREVIEW_ROWS = 40
 TABLES = {
     "orders": "one row per order. status: placed|shipped|out_for_delivery|delivered|cancelled|rto|returned "
               "(rto = COD parcel refused at the door). payment_method: cod|prepaid. total = amount paid in ₹ "
-              "(revenue = SUM(total) of delivered orders unless asked otherwise). created_at 'YYYY-MM-DD HH:MM:SS'",
+              "(revenue = SUM(total) of delivered orders unless asked otherwise). created_at 'YYYY-MM-DD HH:MM:SS'. "
+              "source: store|ai_chat (ai_chat = bought from a product card an AI agent recommended in a chat)",
     "order_items": "products in each order: order_id, product_id, quantity, unit_price (₹ at time of purchase)",
     "products": "catalogue: category face_wash|moisturizer|serum|sunscreen|toner|lip_care|eye_care|body_care|kit, "
                 "price, mrp, stock, rating, skin_types / concerns (comma lists)",
@@ -63,7 +64,7 @@ TABLES = {
 # Personal or free-text columns: blocked even though their table is allowed.
 BLOCKED = {
     ("customers", "name"), ("customers", "phone"), ("customers", "email"),
-    ("orders", "shipping_address"), ("support_tickets", "message"), ("campaign_members", "message"),
+    ("orders", "shipping_address"), ("orders", "ai_ref"), ("support_tickets", "message"), ("campaign_members", "message"),
     ("order_actions", "details"), ("order_actions", "reason"), ("conversation_scores", "reason"),
     ("ai_traces", "input"), ("ai_traces", "output"), ("ai_traces", "error"), ("ai_traces", "meta"),
 }

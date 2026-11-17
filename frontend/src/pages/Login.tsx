@@ -13,6 +13,7 @@ export function Login() {
   const navigate = useNavigate();
   const from = (useLocation().state as { from?: string } | null)?.from ?? "/app";
   const login = useMutation({
+    meta: { inlineError: true },
     mutationFn: () => api.login(password),
     onSuccess: async () => { await qc.invalidateQueries({ queryKey: ["me"] }); navigate(from, { replace: true }); },
   });

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 
-from kotler import crm, db
+from kotler import crm, db, store
 from kotler.api.auth import require_user
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_user)])
@@ -97,6 +97,7 @@ def overview(days: int = Query(30, ge=7, le=365)) -> dict:
                     "pending_approvals": approvals},
         "inbox": inbox,
         "ai": {k: ai[k] for k in ("agent_turns", "conversations", "p95_s", "guard_rate", "escalation_rate", "cost_inr")},
+        "ai_sales": store.ai_sales(days),
         "insights": insights(cur, prev, days),
     }
 

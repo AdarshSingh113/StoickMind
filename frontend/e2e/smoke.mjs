@@ -109,6 +109,13 @@ ok((await page.locator("tbody tr").count()) === 25, "customer list shows a page 
 await page.getByRole("button", { name: /^Champions/ }).click();
 await page.waitForTimeout(700);
 ok((await page.locator("tbody").getByText("Champions").count()) === (await page.locator("tbody tr").count()), "segment filter");
+await page.getByRole("button", { name: /^All customers/ }).click();
+await Promise.all([page.waitForResponse((r) => r.url().includes("via_ai=true")),
+  page.getByRole("button", { name: "Bought via AI chat" }).click()]);
+await page.waitForTimeout(300);
+const viaAi = await page.locator("tbody tr").count();
+ok(viaAi === 0 || (await page.locator("tbody [aria-label='bought via AI chat']").count()) === viaAi, "'Bought via AI chat' filter");
+await page.getByRole("button", { name: "Bought via AI chat" }).click();
 const firstName = (await page.locator("tbody tr td").first().locator("div.font-semibold").last().textContent()).trim();
 await page.locator("tbody tr").first().click();
 await page.getByRole("heading", { name: firstName }).waitFor();

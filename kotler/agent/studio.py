@@ -113,8 +113,10 @@ def _now() -> str:
 def _from_row(row: dict) -> AgentConfig:
     row = dict(row)
     row["tools"] = json.loads(row["tools"])
-    # NULL = saved before handoff rules existed: use the defaults (built-ins get their own).
+    # NULL = saved before handoff rules existed: use the defaults (built-ins get their own). Via pandas an
+    # all-NULL column arrives as float NaN, not None, hence the isinstance check.
     rules = row.get("handoff_rules")
+    rules = rules if isinstance(rules, str) else None
     builtin = next((b for b in BUILTINS if b.slug == row["slug"]), None)
     row["handoff_rules"] = json.loads(rules) if rules else list(builtin.handoff_rules if builtin else DEFAULT_RULES)
     row["is_builtin"] = bool(row["is_builtin"])

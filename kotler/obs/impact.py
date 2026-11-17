@@ -5,6 +5,7 @@ The rule here is HONESTY ABOUT EVIDENCE. Every number is tagged with how we know
   measured   counted from real activity in the database (conversations handled, actions taken)
   modelled   a model's prediction on historical data, under stated assumptions (RTO savings)
   simulated  from the Phase 6 customer simulator, not real customers (campaign profit)
+  revenue    money customers paid (sales from AI chats). Revenue isn't profit, so it is never added to the total
 
 Mixing these into one big "AI saved ₹X" headline is how dashboards mislead. We show them separately, with the
 assumptions next to each number, and leave modelled and simulated values out of the "measured" total.
@@ -91,6 +92,16 @@ def campaigns() -> Lever | None:
                  "message and discount costs. Customer responses come from the simulator.", sig)
 
 
+def ai_sales(days: int = 30) -> Lever:
+    from kotler import store
+    s = store.ai_sales(days)
+    shown = s["chats_shown_products"]
+    rate = f"{s['chats_converted']} of {shown} chats that showed product cards bought" if shown else "no product cards shown yet"
+    return Lever("Sales from AI chats (demo store checkout)", s["revenue"], f"last {days} days", "revenue",
+                 f"{s['orders']} orders placed from a product card the AI recommended ({rate}). Counted only when the "
+                 "signed link from the chat is intact; revenue, not profit, so it isn't added to the total.", s["orders"])
+
+
 def ai_cost(days: int = 30) -> Lever:
     s = metrics.summary(days)
     return Lever("AI model cost (estimated at list price)", -s["cost_inr"], f"last {days} days", "measured",
@@ -99,5 +110,5 @@ def ai_cost(days: int = 30) -> Lever:
 
 
 def impact(days: int = 30) -> pd.DataFrame:
-    levers = [support_automation(days), rto_prevention(), campaigns(), ai_cost(days)]
+    levers = [support_automation(days), ai_sales(days), rto_prevention(), campaigns(), ai_cost(days)]
     return pd.DataFrame([vars(x) for x in levers if x is not None])

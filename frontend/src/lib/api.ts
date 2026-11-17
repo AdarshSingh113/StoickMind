@@ -59,6 +59,7 @@ export type Overview = {
   inbox: { chats: number; needs_human: number; human: number };
   ai: { agent_turns: number; conversations: number; p95_s: number; guard_rate: number; escalation_rate: number;
         cost_inr: number };
+  ai_sales: { orders: number; revenue: number; chats_converted: number; chats_shown_products: number; conversion_rate: number | null };
   insights: Insight[];
 };
 

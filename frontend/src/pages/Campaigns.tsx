@@ -70,9 +70,9 @@ export function NewCampaign() {
   const [source, setSource] = useState("manual");
   useEffect(() => { setName(`${JOURNEY_LABEL[journey]} · ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`); setTemplates(null); }, [journey]);
   const audience = useQuery({ queryKey: ["audience", journey], queryFn: () => get<{ total: number; sample: { first_name: string; segment: string; product_name: string; image_url: string | null; price: number; reason: string; churn_risk: number }[] }>(`/api/v1/journeys/${journey}/audience?limit=8`) });
-  const gen = useMutation({ mutationFn: () => post<{ templates: Templates; source: string }>("/api/v1/campaigns/templates", { journey, offer_pct: offer }),
+  const gen = useMutation({ meta: { inlineError: true }, mutationFn: () => post<{ templates: Templates; source: string }>("/api/v1/campaigns/templates", { journey, offer_pct: offer }),
     onSuccess: (r) => { setTemplates(r.templates); setSource(r.source); toast.success(r.source === "ai" ? "AI wrote two variants. Edit freely." : "Using the hand-written templates (AI unavailable or its draft failed validation)."); } });
-  const create = useMutation({ mutationFn: () => post<{ id: number }>("/api/v1/campaigns", { name, journey, templates, template_source: source, offer_pct: offer, holdout_pct: holdout / 100, channel }),
+  const create = useMutation({ meta: { inlineError: true }, mutationFn: () => post<{ id: number }>("/api/v1/campaigns", { name, journey, templates, template_source: source, offer_pct: offer, holdout_pct: holdout / 100, channel }),
     onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["campaigns"] }); toast.success("Campaign created as a draft."); navigate(`/app/campaigns/${r.id}`); } });
   const edit = (v: "A" | "B", lang: "en" | "hinglish", text: string) => setTemplates((t) => t && { ...t, [v]: { ...t[v], [lang]: text } });
   return (

@@ -17,12 +17,14 @@ BASE = f"""
 WITH stats AS (
   SELECT customer_id,
          COUNT(*) FILTER (WHERE {crm.LIVE}) AS orders,
+         COUNT(*) FILTER (WHERE source = 'ai_chat' AND {crm.LIVE}) AS ai_orders,
          COALESCE(SUM(total) FILTER (WHERE status = 'delivered'), 0) AS lifetime_value,
          MAX(created_at) AS last_order_at
   FROM orders GROUP BY customer_id)
 SELECT c.id, c.name, c.city, c.state, p.tier, c.skin_type, c.preferred_language AS language,
        c.acquisition_channel AS channel, c.created_at,
-       COALESCE(s.orders, 0) AS orders, COALESCE(s.lifetime_value, 0) AS lifetime_value, s.last_order_at,
+       COALESCE(s.orders, 0) AS orders, COALESCE(s.ai_orders, 0) AS ai_orders,
+       COALESCE(s.lifetime_value, 0) AS lifetime_value, s.last_order_at,
        sc.segment, sc.churn_risk, sc.clv_12m, sc.value_at_risk
 FROM customers c
 JOIN pincodes p ON p.pincode = c.pincode
@@ -33,7 +35,7 @@ LEFT JOIN customer_scores sc ON sc.customer_id = c.id
 
 @router.get("")
 def list_customers(q: str | None = Query(None, max_length=80), segment: str | None = None,
-                   tier: int | None = Query(None, ge=1, le=3), sort: str = "value",
+                   tier: int | None = Query(None, ge=1, le=3), sort: str = "value", via_ai: bool = False,
                    page: int = Query(1, ge=1), page_size: int = Query(25, ge=5, le=100)) -> dict:
     ensure_ml()
     where, params = [], {}
@@ -43,6 +45,8 @@ def list_customers(q: str | None = Query(None, max_length=80), segment: str | No
     if segment:
         where.append("sc.segment = :segment")
         params["segment"] = segment
+    if via_ai:   # bought from a product card in an AI conversation (signed link, see kotler/store.py)
+        where.append("s.ai_orders > 0")
     if tier:
         where.append("p.tier = :tier")
         params["tier"] = tier
@@ -71,7 +75,7 @@ def customer_360(customer_id: int) -> dict:
                              "FROM customer_features WHERE customer_id = ?", (customer_id,))
                 if table_exists("customer_features") else None) or {}
     orders = db.query_df("""SELECT o.id, o.order_number, o.created_at, o.status, o.payment_method, o.total, o.discount,
-                                   o.coupon_code, o.courier, o.delivered_at,
+                                   o.coupon_code, o.courier, o.delivered_at, o.source,
                                    (SELECT GROUP_CONCAT(p.name || ' ×' || i.quantity, ', ') FROM order_items i
                                     JOIN products p ON p.id = i.product_id WHERE i.order_id = o.id) AS items
                             FROM orders o WHERE o.customer_id = ? ORDER BY o.created_at DESC LIMIT 50""", (customer_id,))

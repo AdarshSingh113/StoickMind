@@ -29,7 +29,7 @@ export function Studio() {
   const meta = useQuery({ queryKey: ["agents-meta"], queryFn: () => get<Meta>("/api/v1/agents/meta") });
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ slug: "", name: "", template: "Blank agent" });
-  const create = useMutation({ mutationFn: () => post<{ agent: AgentCfg }>("/api/v1/agents", form),
+  const create = useMutation({ meta: { inlineError: true }, mutationFn: () => post<{ agent: AgentCfg }>("/api/v1/agents", form),
     onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["agents"] }); navigate(`/app/studio/${r.agent.slug}`); } });
   return (
     <div className="mx-auto max-w-[1400px] p-4 sm:p-6 lg:p-8">
@@ -79,7 +79,7 @@ export function AgentEditor() {
   const [note, setNote] = useState("");
   useEffect(() => { if (q.data) setCfg(q.data.agent); }, [q.data]);
   const refresh = () => { qc.invalidateQueries({ queryKey: ["agent", slug] }); qc.invalidateQueries({ queryKey: ["agents"] }); };
-  const save = useMutation({ mutationFn: () => put<{ agent: AgentCfg }>(`/api/v1/agents/${slug}`, { ...cfg, note }),
+  const save = useMutation({ meta: { inlineError: true }, mutationFn: () => put<{ agent: AgentCfg }>(`/api/v1/agents/${slug}`, { ...cfg, note }),
     onSuccess: (r) => { toast.success(`Saved as version ${r.agent.version}.`); setNote(""); refresh(); } });
   const status = useMutation({ mutationFn: (s: string) => post(`/api/v1/agents/${slug}/status`, { status: s }), onSuccess: () => { toast.success("Status updated."); refresh(); } });
   const restore = useMutation({ mutationFn: (v: number) => post<{ agent: AgentCfg }>(`/api/v1/agents/${slug}/restore`, { version: v }),
@@ -206,12 +206,13 @@ function Playground({ slug, dirty }: { slug: string; dirty: boolean }) {
   const [customer, setCustomer] = useState("");
   const [text, setText] = useState("");
   const send = useMutation({
+    meta: { inlineError: true },
     mutationFn: (m: string) => post<ChatTurn & { conversation_id: number }>(`/api/v1/agents/${slug}/chat`, { message: m, conversation_id: conv, customer_id: customer ? Number(customer) : null }),
     onMutate: (m) => { setTurns((t) => [...t, { me: m }]); setText(""); },
     onSuccess: (r) => { setConv(r.conversation_id); setTurns((t) => [...t.slice(0, -1), { ...t.at(-1)!, ...r }]); },
     onError: () => setTurns((t) => t.slice(0, -1)),
   });
-  const judge = useMutation({ mutationFn: () => post<{ achieved: boolean; score: number; reason: string }>(`/api/v1/agents/${slug}/judge`, { conversation_id: conv }) });
+  const judge = useMutation({ meta: { inlineError: true }, mutationFn: () => post<{ achieved: boolean; score: number; reason: string }>(`/api/v1/agents/${slug}/judge`, { conversation_id: conv }) });
   return (
     <Card>
       <CardHeader title="Playground" description={dirty ? "Save first: the playground runs the saved version" : "Chat with the saved version (drafts too)"}

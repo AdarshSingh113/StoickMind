@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Lightbulb, Mail, MapPin, MessagesSquare, Phone, ShoppingBag, Ticket } from "lucide-react";
+import { ArrowLeft, Bot, Lightbulb, Mail, MapPin, MessagesSquare, Phone, ShoppingBag, Sparkles, Ticket } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -23,7 +23,7 @@ type C360 = {
   features: Record<string, number | string | null>;
   segment_info: { description: string; action: string } | null;
   orders: { id: number; order_number: string; created_at: string; status: string; payment_method: string; total: number;
-    discount: number; coupon_code: string | null; courier: string | null; items: string | null }[];
+    discount: number; coupon_code: string | null; courier: string | null; items: string | null; source: string }[];
   monthly: { month: string; spend: number; orders: number }[];
   tickets: { id: number; created_at: string; channel: string; category: string; priority: string; status: string; message: string; resolved_by: string | null }[];
   chats: { channel: Channel; external_id: string; handler: string; needs_human: number; last_inbound_at: string | null }[];
@@ -60,6 +60,7 @@ export function Customer360() {
             {c.skin_type && <Badge tone="outline">{titleCase(c.skin_type)} skin</Badge>}
             <Badge tone="outline">{langLabel(c.language)}</Badge>
             <Badge tone="outline">via {titleCase(c.channel)}</Badge>
+            {q.data.orders.some((o) => o.source === "ai_chat") && <Badge tone="primary"><Sparkles />Bought via AI chat</Badge>}
           </div>
         </div>
       </Card>
@@ -101,7 +102,8 @@ export function Customer360() {
               <table className="w-full text-[13px]">
                 <thead className="sticky top-0 border-y bg-muted"><tr><Th>Order</Th><Th>Items</Th><Th>Status</Th><Th className="text-right">Total</Th></tr></thead>
                 <tbody className="divide-y">{q.data.orders.map((o) => (
-                  <tr key={o.id}><Td><div className="font-semibold">{o.order_number}</div><div className="text-[11.5px] text-muted-foreground">{ago(o.created_at)} · {o.payment_method.toUpperCase()}{o.coupon_code ? ` · ${o.coupon_code}` : ""}</div></Td>
+                  <tr key={o.id}><Td><div className="font-semibold">{o.order_number}</div><div className="text-[11.5px] text-muted-foreground">{ago(o.created_at)} · {o.payment_method.toUpperCase()}{o.coupon_code ? ` · ${o.coupon_code}` : ""}
+                    {o.source === "ai_chat" && <span className="ml-1 font-semibold text-primary">· AI chat</span>}</div></Td>
                     <Td className="max-w-[340px] text-muted-foreground"><div className="line-clamp-2">{o.items}</div></Td>
                     <Td><StatusBadge value={o.status} /></Td><Td className="text-right font-semibold tabular">{inr(o.total)}</Td></tr>))}</tbody>
               </table>
