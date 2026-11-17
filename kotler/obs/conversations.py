@@ -4,7 +4,8 @@ Built from the real message log (Telegram, WhatsApp, website chat), not from eva
 with actual use. Demo conversations are counted and reported separately, so nobody mistakes them for traffic.
 
 AUTOMATION RATE = conversations the AI handled end to end / all conversations, where "end to end" means the
-AI replied, no person replied, and nothing is waiting for a person. It measures "no person was needed", NOT
+AI replied, no person replied, nothing is waiting for a person, and it was never escalated (an escalation
+counts even if the chat was later handed back to the AI). It measures "no person was needed", NOT
 "the customer was happy": read it next to the judge's success rate (Agents tab). A high automation rate on
 "Skin reaction" would be a red flag, not a win: those chats SHOULD reach a person.
 """
@@ -31,7 +32,7 @@ def conversation_table(days: int | None = 30) -> pd.DataFrame:
                      "WHERE created_at >= ? ORDER BY id", (since,))
     if ev.empty:
         return pd.DataFrame(columns=COLUMNS)
-    users = db.query_df("SELECT channel, external_id, handler, needs_human FROM channel_users").set_index(
+    users = db.query_df("SELECT channel, external_id, handler, needs_human, escalated_at FROM channel_users").set_index(
         ["channel", "external_id"])
     rows = []
     for (ch, ext), g in ev.groupby(["channel", "external_id"], sort=False):
@@ -40,7 +41,7 @@ def conversation_table(days: int | None = 30) -> pd.DataFrame:
         human = int((out.agent_slug == "human").sum())
         ai = len(out) - human
         u = users.loc[(ch, ext)] if (ch, ext) in users.index else None
-        waiting = u is not None and (bool(u.needs_human) or u.handler == "human")
+        waiting = u is not None and (bool(u.needs_human) or u.handler == "human" or isinstance(u.escalated_at, str))
         status = "handed_over" if human or waiting else ("automated" if ai else "unanswered")
         intent = conversation_intent(inbound)
         said = [t for t in inbound if not t.startswith("/")] or inbound     # "/quiz" is a poor example

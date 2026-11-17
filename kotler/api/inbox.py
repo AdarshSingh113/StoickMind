@@ -154,8 +154,8 @@ def _with_cards(m: dict) -> dict:
 def takeover(channel: str, external_id: str) -> dict:
     _session(channel, external_id)
     with db.get_conn() as conn:
-        conn.execute("UPDATE channel_users SET handler = 'human', handoff_at = ? WHERE channel = ? AND external_id = ?",
-                     (core._now(), channel, external_id))
+        conn.execute("UPDATE channel_users SET handler = 'human', handoff_at = ?, escalated_at = COALESCE(escalated_at, ?) "
+                     "WHERE channel = ? AND external_id = ?", (core._now(), core._now(), channel, external_id))
     return {"handler": "human"}
 
 
@@ -314,9 +314,10 @@ def load_demo() -> dict:
             c = cust[i] if ch != "web" and i < len(cust) else None
             fill = {"first": c["name"].split()[0] if c else "there", "order": (c or {}).get("order_number") or "KTL-100001"}
             conn.execute("INSERT INTO channel_users (channel, external_id, display_name, customer_id, agent_slug, "
-                         "handler, needs_human, last_inbound_at, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                         "handler, needs_human, last_inbound_at, created_at, escalated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                          (ch, ext, c["name"] if c else name, c["id"] if c else None, agent, handler, needs,
-                          t.strftime(core.FMT), t.strftime(core.FMT)))
+                          t.strftime(core.FMT), t.strftime(core.FMT),
+                          t.strftime(core.FMT) if needs or handler == "human" else None))
             for j, (direction, text, author) in enumerate(msgs):
                 text = text.format(**fill)
                 cards = product_cards(text, all_products) if author in ("kavya", "skin-quiz") else []

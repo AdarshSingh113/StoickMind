@@ -64,7 +64,8 @@ WELCOME = ("Hi{name}! I'm the Glow & Co. assistant.\n\n"
 # Columns added after Phase 7. Existing databases get them with ALTER TABLE: a tiny "migration".
 MIGRATIONS = {
     "channel_users": {"handler": "TEXT NOT NULL DEFAULT 'ai'", "needs_human": "INTEGER NOT NULL DEFAULT 0",
-                      "handoff_at": "TEXT", "last_read_id": "INTEGER NOT NULL DEFAULT 0"},
+                      "handoff_at": "TEXT", "last_read_id": "INTEGER NOT NULL DEFAULT 0",
+                      "escalated_at": "TEXT"},   # first time a person was needed; never cleared (analytics)
     "channel_events": {"meta": "TEXT"},   # JSON, e.g. the product cards shown with an AI reply
 }
 
@@ -77,6 +78,9 @@ def ensure_tables() -> None:
             for col, ddl in cols.items():
                 if col not in have:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+                    if col == "escalated_at":   # older databases: chats waiting for / handled by a person were escalated
+                        conn.execute("UPDATE channel_users SET escalated_at = COALESCE(handoff_at, last_inbound_at, created_at) "
+                                     "WHERE needs_human = 1 OR handler = 'human'")
 
 
 def _now() -> str:
@@ -249,7 +253,7 @@ def handle_incoming(msg: Incoming, llm=None) -> Outgoing:
     # Persist what the agent learned (verification!) and which conversation/agent we're in.
     _update_session(msg.channel, msg.external_id, agent_slug=slug, conversation_id=agent.conversation_id,
                     customer_id=agent.ctx.customer_id, verify_attempts=agent.ctx.verify_attempts,
-                    **({"needs_human": 1} if turn.escalated else {}))
+                    **({"needs_human": 1, "escalated_at": session.get("escalated_at") or _now()} if turn.escalated else {}))
     return reply(split_message(turn.reply, MAX_CHARS.get(msg.channel, 4000)), slug, turn.products)
 
 

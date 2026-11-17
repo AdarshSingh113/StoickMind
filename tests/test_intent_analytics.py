@@ -95,3 +95,25 @@ def test_api_and_inbox_tags():
     assert r["summary"]["conversations"] == 5 and r["summary"]["demo"] == 5 and "ai_sales" in r
     tags = {x["display_name"]: x["intent_label"] for x in c.get("/api/v1/inbox").json()["conversations"]}
     assert "Skin reaction" in tags.values() and "Order status" in tags.values()
+
+
+def test_an_escalation_counts_even_after_handing_back(monkeypatch):
+    from kotler import server
+    from kotler.llm import FakeLLM, text_response
+    monkeypatch.setattr("kotler.llm.get_llm", lambda: FakeLLM(lambda m, t: text_response("Please stop using it.")))
+    core.handle_incoming(core.Incoming("web", "visitor-1", "The serum is burning my skin"))        # handoff rule
+    assert db.query_one("SELECT escalated_at FROM channel_users WHERE external_id = 'visitor-1'")["escalated_at"]
+    c = TestClient(server.app)
+    c.post("/api/v1/auth/login", json={"password": "kotler"})
+    c.post("/api/v1/inbox/web/visitor-1/takeover")
+    c.post("/api/v1/inbox/web/visitor-1/release")                     # handed back, no person replied
+    s = conversation_stats(30)
+    assert s["summary"]["automated"] == 0 and s["summary"]["handed_over"] == 1
+
+
+def test_older_databases_backfill_escalations():
+    chat("9", [("in", "refund please", None), ("out", "A person will reply", "asha")], needs=1)
+    with db.get_conn() as conn:
+        conn.execute("ALTER TABLE channel_users DROP COLUMN escalated_at")
+    core.ensure_tables()
+    assert db.query_one("SELECT escalated_at FROM channel_users WHERE external_id = '9'")["escalated_at"]
