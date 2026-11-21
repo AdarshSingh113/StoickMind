@@ -286,3 +286,88 @@ def test_schedule_due():
         conn.execute("INSERT INTO listening_runs (started_at, status, trigger) VALUES (?, 'ok', 'schedule')",
                      ((datetime.now() - timedelta(hours=2)).strftime(store.FMT),))
     assert runner.due() is False and runner.due(datetime.now() + timedelta(hours=5)) is True
+
+
+# ------------------------------------------------------------------ lessons from real data
+def test_reposts_are_stored_once():
+    a = {"source": "bluesky", "external_id": "p1", "text": "From a niacinamide serum to hand masks https://x.y/1"}
+    b = {"source": "bluesky", "external_id": "p2", "text": "From a Niacinamide serum to hand masks!  https://x.y/2"}
+    assert len(store.save_mentions([a])) == 1 and store.save_mentions([b]) == []
+
+
+def test_ads_and_off_topic_are_kept_out_of_the_insights(monkeypatch):
+    only(monkeypatch, ("vitamin c serum", "category"))
+    posts = [{"uri": f"at://d/app.bsky.feed.post/{i}", "author": {"handle": "h"}, "record": {"text": t, "createdAt": NOW}}
+             for i, t in enumerate(["20% Vitamin C Serum, 13.9K+ sold, 4.8 stars. See live deal",      # ad (rule)
+                                    "vitamin c serum made my spots fade, love it",
+                                    "Thanks coach, serum of the season is my team's win"])]             # off topic (AI)
+    posts.append({"uri": "at://d/app.bsky.feed.post/9", "author": {"handle": "h"},     # names the term: relevant,
+                  "record": {"text": "Best Vitamin C Serums 2026, the favourites", "createdAt": NOW}})  # whatever the AI says
+    monkeypatch.setattr(sources, "http_get", recorded(bluesky=R(200, {"posts": posts}), news=R(200, content=b"<rss/>")))
+    monkeypatch.setattr(sources, "youtube", lambda *a: ([], 0))
+
+    def model(messages, tools):
+        items = json.loads(messages[0]["content"].split("ITEMS (JSON):\n")[1])
+        return text_response(json.dumps({"labels": [
+            {"i": it["i"], "relevant": "coach" not in it["text"].lower() and "Best" not in it["text"],
+             "kind": "promotion" if "deal" in it["text"] else "praise", "sentiment": "positive", "aspects": []}
+            for it in items]}))
+    runner.scan("test", llm=FakeLLM(model))
+    ov = insights.overview(30)
+    assert ov["summary"]["mentions"] == 2 and ov["filtered"] == {"ads": 1, "off_topic": 1}
+    assert insights.feed(30)["total"] == 2 and insights.feed(30, include_noise=True)["total"] == 4
+
+
+def test_brand_names_must_actually_appear(monkeypatch):
+    only(monkeypatch, ("Glow & Co", "brand"))
+    posts = [{"uri": "at://d/app.bsky.feed.post/1", "author": {"handle": "h"},
+              "record": {"text": "Thanks Coach, Cornelius has it covered", "createdAt": NOW}},
+             {"uri": "at://d/app.bsky.feed.post/2", "author": {"handle": "h"},
+              "record": {"text": "The Glow & Co sunscreen is so light", "createdAt": NOW}}]
+    monkeypatch.setattr(sources, "http_get", recorded(bluesky=R(200, {"posts": posts}), news=R(200, content=b"<rss/>")))
+    monkeypatch.setattr(sources, "youtube", lambda *a: ([], 0))
+    assert runner.scan("test", llm=None)["new"] == 1
+
+
+def test_citation_lists_and_language():
+    assert insights.cited("praise [1, 4] and [2]; not [x]") == [1, 2, 4]
+    lbl = analyze._clean({"sentiment": "negative", "kind": "complaint", "aspects": [], "gist": "Got eyelid eczema", "language": "de"})
+    assert lbl["language"] == "de"
+    assert "language" not in analyze._clean({"sentiment": "neutral", "kind": "other", "aspects": [], "language": "<script>"})
+
+
+def test_brief_handles_missing_gists_and_authors():
+    """Pandas turns a missing gist into NaN, which is truthy: `gist or text` must still pick the text."""
+    store.save_mentions([{"source": "news", "external_id": "n1", "text": "Vitamin C serum recall", "term": "vitamin c serum",
+                          "term_kind": "category"},
+                         {"source": "bluesky", "external_id": "b1", "text": "love my niacinamide serum", "author": "Asha",
+                          "term": "niacinamide serum", "term_kind": "category"}])
+    with db.get_conn() as conn:
+        conn.execute("UPDATE listening_mentions SET sentiment = 'neutral', kind = 'news', gist = NULL WHERE external_id = 'n1'")
+        conn.execute("UPDATE listening_mentions SET sentiment = 'positive', kind = 'praise', gist = 'Loves it' "
+                     "WHERE external_id = 'b1'")
+    llm = FakeLLM([text_response("- A recall [1, 2]")])
+    b = insights.brief_from_mentions(llm, 30)
+    assert "Vitamin C serum recall" in llm.calls[0][0]["content"] and "nan" not in json.dumps(b["sources"])
+
+
+def test_feed_json_with_unjudged_mentions(admin):
+    """A mention not yet judged has relevant = NULL; mixed with 0/1 pandas makes it NaN, which JSON refuses."""
+    store.save_mentions([{"source": "news", "external_id": "a", "text": "Sunscreen news one", "term": "sunscreen"},
+                         {"source": "news", "external_id": "b", "text": "Sunscreen news two", "term": "sunscreen"}])
+    with db.get_conn() as conn:
+        conn.execute("UPDATE listening_mentions SET relevant = 1, likes = 3 WHERE external_id = 'a'")
+    r = admin.get("/api/v1/listening/mentions?noise=true")
+    assert r.status_code == 200 and {m["relevant"] for m in r.json()["mentions"]} == {1, None}
+
+
+def test_clear_ads_are_promotions_whatever_the_model_says(monkeypatch):
+    only(monkeypatch, ("vitamin c serum", "category"))
+    deal = "4oz Timeless 20% Vitamin C Serum only $35.31 (Reg $75.95) 1. Click Here: amazon.com/dp/B00XBOUAAW"
+    posts = [{"uri": "at://d/app.bsky.feed.post/1", "author": {"handle": "deals"}, "record": {"text": deal, "createdAt": NOW}}]
+    monkeypatch.setattr(sources, "http_get", recorded(bluesky=R(200, {"posts": posts}), news=R(200, content=b"<rss/>")))
+    monkeypatch.setattr(sources, "youtube", lambda *a: ([], 0))
+    llm = FakeLLM(lambda m, t: text_response(json.dumps({"labels": [
+        {"i": 0, "relevant": True, "sentiment": "neutral", "kind": "news", "aspects": ["price"], "gist": "A deal"}]})))
+    runner.scan("test", llm=llm)
+    assert db.query_one("SELECT kind FROM listening_mentions")["kind"] == "promotion"

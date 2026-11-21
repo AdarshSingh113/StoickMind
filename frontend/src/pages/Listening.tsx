@@ -25,8 +25,8 @@ type Term = { id: number; term: string; kind: string; active: number };
 type Brief = { id: number; created_at: string; method: "google_search" | "collected"; text: string; sources: { n: number; title: string; url: string }[];
   warnings: string[]; note?: string | null };
 type Overview = {
-  days: number; last_run: Run | null; every_hours: number; enabled_sources: string[];
-  summary: Split & { alerts: number; net: number | null };
+  days: number; last_run: Run | null; every_hours: number; enabled_sources: string[]; filtered: { ads: number; off_topic: number };
+  summary: Split & { alerts: number; complaints: number; side_effects: number; net: number | null };
   by_source: (Split & { source: string })[]; by_term: (Split & { term: string; kind: string })[];
   aspects: (Split & { aspect: string; label: string })[];
   ingredients: (Split & { ingredient: string; products: { id: number; name: string; image_url: string | null; price: number }[] })[];
@@ -35,7 +35,7 @@ type Overview = {
 };
 type Mention = { id: number; source: string; url: string; author: string | null; title: string | null; text: string; published_at: string | null;
   fetched_at: string; likes: number; term: string; term_kind: string; language: string | null; sentiment: string | null; kind: string | null;
-  aspects: string[]; ingredients: string[]; gist: string | null; alert: string | null; labelled_by: string | null };
+  aspects: string[]; ingredients: string[]; gist: string | null; alert: string | null; relevant: number | null; labelled_by: string | null };
 
 const SOURCE = { youtube: { label: "YouTube", icon: MonitorPlay }, bluesky: { label: "Bluesky", icon: AtSign }, news: { label: "Google News", icon: Newspaper } } as const;
 const SENTIMENT_TONE = { positive: "good", negative: "bad", mixed: "warn", neutral: "neutral" } as const;
@@ -77,10 +77,10 @@ export function Listening() {
                 body={<>Click <b>Scan now</b> to read what people are saying about your watch terms. Add your brand, products, categories or competitors on the right.</>} /></Card>
             ) : <>
               <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <Stat label="Mentions" value={num(d.summary.mentions)} hint={d.by_source.map((s) => `${num(s.mentions)} ${SOURCE[s.source as keyof typeof SOURCE]?.label ?? s.source}`).join(" · ")} />
+                <Stat label="Mentions" value={num(d.summary.mentions)} hint={`${d.by_source.map((s) => `${num(s.mentions)} ${SOURCE[s.source as keyof typeof SOURCE]?.label ?? s.source}`).join(" · ")}${(d.filtered.ads + d.filtered.off_topic) ? ` · ${num(d.filtered.ads + d.filtered.off_topic)} ads/off-topic left out` : ""}`} />
                 <Stat label="Net sentiment" value={d.summary.net == null ? "–" : `${d.summary.net > 0 ? "+" : ""}${d.summary.net}`}
                   hint={`${num(d.summary.positive)} positive · ${num(d.summary.negative)} negative (−100 to +100)`} />
-                <Stat label="Complaints & side effects" value={num(d.aspects.find((a) => a.aspect === "side_effects")?.mentions ?? 0)} hint="mentions about side effects" />
+                <Stat label="Complaints" value={num(d.summary.complaints)} hint={`${num(d.summary.side_effects)} mention side effects`} />
                 <Stat label="Alerts about your brand" value={num(d.summary.alerts)} hint={d.summary.alerts ? "a person should look today" : "nothing urgent"} />
               </div>
               {d.alerts.length > 0 && (
@@ -106,7 +106,7 @@ export function Listening() {
               </div>
               <BriefCard brief={d.brief} />
             </>}
-            <Feed days={days} terms={d.terms} />
+            <Feed days={days} terms={d.terms} filtered={d.filtered} />
           </div>
           <div className="space-y-5"><Setup d={d} /></div>
         </div>)}
@@ -133,10 +133,14 @@ function BriefCard({ brief }: { brief: Brief | null }) {
   const write = useMutation({ meta: { inlineError: true }, mutationFn: () => post<{ brief: Brief }>("/api/v1/listening/brief", { method: "auto" }),
     onSuccess: (r) => { if (r.brief.note) toast(r.brief.note); qc.invalidateQueries({ queryKey: ["listening"] }); } });
   const b = write.data?.brief ?? brief;
-  const linked = (text: string) => text.split(/(\[\d{1,3}\])/).map((part, i) => {
-    const n = part.match(/^\[(\d{1,3})\]$/)?.[1];
-    const src = n ? b?.sources.find((s) => s.n === Number(n)) : undefined;
-    return src ? <a key={i} href={src.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">{part}</a> : part;
+  // "[3]" or "[1, 4]": each number links to the post it cites.
+  const linked = (text: string) => text.split(/(\[\d{1,3}(?:\s*,\s*\d{1,3})*\])/).map((part, i) => {
+    if (!/^\[\d/.test(part)) return part;
+    const nums = part.slice(1, -1).split(",").map((n) => Number(n.trim()));
+    return <span key={i}>[{nums.map((n, j) => {
+      const src = b?.sources.find((s) => s.n === n);
+      return <span key={n}>{j > 0 && ", "}{src ? <a href={src.url} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline">{n}</a> : n}</span>;
+    })}]</span>;
   });
   return (
     <Card>
@@ -159,20 +163,24 @@ function BriefCard({ brief }: { brief: Brief | null }) {
   );
 }
 
-function Feed({ days, terms }: { days: number; terms: Term[] }) {
+function Feed({ days, terms, filtered }: { days: number; terms: Term[]; filtered: Overview["filtered"] }) {
+  const [noise, setNoise] = useState(false);
   const [source, setSource] = useState("");
   const [sentiment, setSentiment] = useState("");
   const [term, setTerm] = useState("");
   const [text, setText] = useState("");
   const [search, setSearch] = useState("");
   useEffect(() => { const t = setTimeout(() => setSearch(text.trim()), 250); return () => clearTimeout(t); }, [text]);
-  const q = useQuery({ queryKey: ["listening-feed", days, source, sentiment, term, search],
-    queryFn: () => get<{ total: number; mentions: Mention[] }>(`/api/v1/listening/mentions${qs({ days, source: source || null, sentiment: sentiment || null, term: term || null, q: search || null, limit: 60 })}`),
+  const q = useQuery({ queryKey: ["listening-feed", days, source, sentiment, term, search, noise],
+    queryFn: () => get<{ total: number; mentions: Mention[] }>(`/api/v1/listening/mentions${qs({ days, source: source || null, sentiment: sentiment || null, term: term || null, q: search || null, noise: noise || null, limit: 60 })}`),
     placeholderData: keepPreviousData });
   const select = "h-9 rounded-full border bg-card px-3 text-[13px]";
   return (
     <Card>
-      <CardHeader title="Mentions" description={q.data ? `${num(q.data.total)} in the last ${days} days` : "…"} />
+      <CardHeader title="Mentions" description={q.data ? `${num(q.data.total)} in the last ${days} days` : "…"}
+        action={(filtered.ads + filtered.off_topic) > 0 && <label className="flex cursor-pointer items-center gap-1.5 text-[12.5px] text-muted-foreground">
+          <input type="checkbox" checked={noise} onChange={(e) => setNoise(e.target.checked)} className="accent-[var(--primary)]" />
+          Show {num(filtered.ads)} ads and {num(filtered.off_topic)} off-topic</label>} />
       <div className="flex flex-wrap items-center gap-2 border-y px-4 py-3">
         <div className="relative min-w-[180px] flex-1"><Search className="pointer-events-none absolute top-2.5 left-3 size-4 text-subtle-foreground" />
           <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Search mentions" className="pl-9" /></div>
@@ -205,6 +213,7 @@ function MentionRow({ m }: { m: Mention }) {
           {m.sentiment && <Badge tone={SENTIMENT_TONE[m.sentiment as keyof typeof SENTIMENT_TONE] ?? "neutral"}>
             {m.sentiment === "positive" ? <ThumbsUp /> : m.sentiment === "negative" ? <ThumbsDown /> : null}{titleCase(m.sentiment)}</Badge>}
           {m.kind && m.kind !== "other" && <Badge tone="outline">{titleCase(m.kind)}</Badge>}
+          {m.relevant === 0 && <Badge tone="warn">off-topic</Badge>}
           <span className="rounded bg-muted px-1.5 text-[11px]">{m.term}</span>
           {m.likes > 0 && <span className="flex items-center gap-1"><ThumbsUp className="size-3" />{num(m.likes)}</span>}
         </div>
@@ -266,7 +275,7 @@ function Setup({ d }: { d: Overview }) {
                 {!s.ready ? <Badge tone="warn">needs key</Badge> : err && on ? <Badge tone="bad">error</Badge> : on ? <Badge tone="good">ready</Badge> : null}
               </label>
               {s.needs && <p className="mt-1 pl-6 text-[11.5px] text-muted-foreground">Add {s.needs}</p>}
-              {err && on && <p className="mt-1 pl-6 text-[11.5px] text-danger">{err}</p>}
+              {err && on && s.ready && <p className="mt-1 pl-6 text-[11.5px] text-danger">{err}</p>}
             </div>);
         })}
         <p className="text-[11.5px] leading-relaxed text-muted-foreground">Not included on purpose: LinkedIn, Facebook, Instagram and marketplace reviews. Reading them needs approved access for a registered business; scraping breaks their terms.</p>

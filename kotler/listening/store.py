@@ -36,10 +36,13 @@ CREATE TABLE IF NOT EXISTS listening_mentions (
     ingredients TEXT,                     -- JSON list found in the text by code: vitamin c, niacinamide, ...
     gist TEXT,                            -- one-line English paraphrase (AI)
     alert TEXT,                           -- e.g. skin_reaction (brand terms only)
+    relevant INTEGER,                     -- 1/0: really about what it was found for (AI); NULL = not judged
+    text_hash TEXT,                       -- normalised text: the same repost under a new id is stored once
     labelled_by TEXT,                     -- ai | rules
     UNIQUE (source, external_id)
 );
 CREATE INDEX IF NOT EXISTS idx_mentions_published ON listening_mentions(published_at);
+CREATE INDEX IF NOT EXISTS idx_mentions_hash ON listening_mentions(text_hash);
 CREATE TABLE IF NOT EXISTS listening_runs (
     id INTEGER PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL,
     trigger TEXT, fetched INTEGER NOT NULL DEFAULT 0, new INTEGER NOT NULL DEFAULT 0,
@@ -61,8 +64,23 @@ def now() -> str:
     return datetime.now().strftime(FMT)
 
 
+MIGRATIONS = {"relevant": "INTEGER", "text_hash": "TEXT"}
+
+
+def text_hash(text: str) -> str:
+    import hashlib
+    import re
+    norm = re.sub(r"\s+", " ", re.sub(r"https?://\S+|[^\w\s]", " ", (text or "").lower())).strip()
+    return hashlib.sha1(norm.encode()).hexdigest()[:16]
+
+
 def ensure_tables() -> None:
     with db.get_conn() as conn:
+        have = {r[1] for r in conn.execute("PRAGMA table_info(listening_mentions)")}
+        if have:                         # tables from an earlier version of this round: add the new columns
+            for col, ddl in MIGRATIONS.items():
+                if col not in have:
+                    conn.execute(f"ALTER TABLE listening_mentions ADD COLUMN {col} {ddl}")
         conn.executescript(SCHEMA)
         if not conn.execute("SELECT 1 FROM listening_terms LIMIT 1").fetchone() and \
                 not conn.execute("SELECT 1 FROM listening_settings WHERE key = 'seeded'").fetchone():
@@ -137,12 +155,16 @@ def save_mentions(items: list[dict]) -> list[int]:
     new = []
     with db.get_conn() as conn:
         for m in items:
+            h = text_hash(m["text"])
+            if conn.execute("SELECT 1 FROM listening_mentions WHERE text_hash = ? LIMIT 1", (h,)).fetchone():
+                continue                 # a copy of something we already have (reposts, scheduled spam)
             cur = conn.execute(
                 "INSERT OR IGNORE INTO listening_mentions (source, external_id, url, author, title, text, published_at, "
-                "fetched_at, likes, term_id, term, term_kind, ingredients, alert) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "fetched_at, likes, term_id, term, term_kind, ingredients, alert, text_hash) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (m["source"], m["external_id"], m.get("url"), (m.get("author") or "")[:80], (m.get("title") or "")[:300],
                  m["text"][:2000], m.get("published_at"), now(), int(m.get("likes") or 0), m.get("term_id"),
-                 m.get("term"), m.get("term_kind"), json.dumps(m.get("ingredients") or []), m.get("alert")))
+                 m.get("term"), m.get("term_kind"), json.dumps(m.get("ingredients") or []), m.get("alert"), h))
             if cur.rowcount:
                 new.append(cur.lastrowid)
     return new

@@ -42,17 +42,24 @@ def _since() -> datetime:
 
 
 def label_pending(llm, limit: int = PENDING_LIMIT) -> int:
-    rows = db.query_df("SELECT id, source, title, text FROM listening_mentions WHERE sentiment IS NULL "
+    rows = db.query_df("SELECT id, source, term, title, text FROM listening_mentions WHERE sentiment IS NULL "
                        "ORDER BY id DESC LIMIT ?", (limit,)).to_dict("records")
     if not rows:
         return 0
     labels = analyze.label(llm, rows)
     with db.get_conn() as conn:
         for r, lbl in zip(rows, labels):
+            # If the text literally names the watch term it IS relevant (the model once called "Best Vitamin C
+            # Serums 2026" off-topic for "vitamin c serum"). The model only judges items that don't name it.
+            relevant = True if analyze.names_it(r["term"] or "", f"{r.get('title') or ''} {r['text']}") \
+                else lbl.get("relevant")
+            if analyze.is_promotion(r["text"]):
+                lbl = {**lbl, "kind": "promotion"}
             conn.execute("UPDATE listening_mentions SET sentiment = ?, kind = ?, aspects = ?, gist = ?, language = ?, "
-                         "labelled_by = ? WHERE id = ?",
+                         "relevant = ?, labelled_by = ? WHERE id = ?",
                          (lbl["sentiment"], lbl["kind"], json.dumps(lbl["aspects"]), lbl.get("gist"),
-                          lbl.get("language") or analyze.detect_language(r["text"]) or "en", lbl["labelled_by"], r["id"]))
+                          lbl.get("language") or analyze.detect_language(r["text"]) or "en",
+                          None if relevant is None else int(relevant), lbl["labelled_by"], r["id"]))
     return len(rows)
 
 
@@ -96,6 +103,8 @@ def _scan(trigger: str, llm) -> dict:
             except Exception as e:         # network trouble: note it, keep going with the other sources
                 report[src]["error"] = f"{type(e).__name__}: {str(e)[:160]}"
                 continue
+            if term["kind"] in ("brand", "competitor") and src != "youtube":
+                items = [m for m in items if analyze.names_it(term["term"], f"{m.get('title') or ''} {m['text']}")]
             for m in items:
                 # The watch term and video title are context: a comment under a "vitamin c serum review" video is
                 # about vitamin C even if it never says so.

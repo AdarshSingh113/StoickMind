@@ -29,9 +29,9 @@ def overview(days: int = Query(30, ge=1, le=90)) -> dict:
 def mentions(days: int = Query(30, ge=1, le=90), source: str | None = Query(None, pattern="^(youtube|bluesky|news)$"),
              sentiment: str | None = Query(None, pattern="^(positive|neutral|negative|mixed)$"),
              term: str | None = Query(None, max_length=60), aspect: str | None = Query(None, max_length=30),
-             alerts: bool = False, q: str | None = Query(None, max_length=100),
+             alerts: bool = False, q: str | None = Query(None, max_length=100), noise: bool = False,
              limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)) -> dict:
-    return insights.feed(days, source, sentiment, term, aspect, alerts, q, limit, offset)
+    return insights.feed(days, source, sentiment, term, aspect, alerts, q, limit, offset, include_noise=noise)
 
 
 @router.post("/scan")
