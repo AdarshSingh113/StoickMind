@@ -1,6 +1,6 @@
 import {
   ArrowRight, BadgeCheck, Bot, ChartNoAxesCombined, ChevronLeft, Database, Hand, Handshake, Inbox, LifeBuoy, Lock,
-  Megaphone, MessageSquareText, PackageCheck, Repeat, ShieldCheck, Sparkles, Store, Wand2,
+  Megaphone, MessageSquareText, PackageCheck, Radar, Repeat, ShieldCheck, Sparkles, Store, Wand2,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
@@ -125,6 +125,13 @@ const MODULES: Module[] = [
     preview: <Panel title="“Which city tier refuses the most COD orders?”"><div className="space-y-3">
       {bar("Tier 3", 100, "33.9%")}{bar("Tier 2", 59, "19.9%", "bg-ink")}{bar("Tier 1", 45, "15.4%", "bg-[var(--chart-6)]")}</div>
       <p className="mt-3 text-[12px] text-muted-foreground">Tier 3 has the highest RTO rate at 33.9% of 425 COD orders. <span className="font-semibold text-success">✓ numbers checked</span></p></Panel> },
+  { key: "listen", label: ["Social", "Listening"], icon: Radar, title: "Hear what the market says, every few hours",
+    context: ["Reads YouTube comments, Bluesky posts and Google News for your brand, products and competitors.",
+      "Filters out ads, reposts and off-topic results; comments are treated as untrusted data.",
+      "Alerts on skin reactions about you; a brief with every number checked and every claim linked."],
+    preview: <Panel title="What people say · 30 days"><div className="space-y-3">
+      {bar("Results", 100, "25 mentions · +23")}{bar("Price", 28, "7 mentions · +5", "bg-ink")}{bar("Side effects", 4, "1 mention · −1", "bg-[var(--chart-6)]")}</div>
+      <p className="mt-3 text-[12px] text-muted-foreground">“Vitamin C serums: users report eye irritation; add an ‘avoid eye area’ note.” <span className="font-semibold text-primary">[4]</span></p></Panel> },
   { key: "studio", label: ["Agent", "Studio"], icon: Bot, title: "Build and version your own agents",
     context: ["Instructions, goal, success criteria and tools as configuration.", "Handoff rules: a rash, a legal threat or \"talk to a human\" always reaches a person, enforced in code.",
       "Every save is a version; roll back in one click. Test in a playground and let an LLM judge score it."],

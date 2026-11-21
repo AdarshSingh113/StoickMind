@@ -27,6 +27,7 @@ Never commit them. Locally: `.streamlit/secrets.toml` (git-ignored) or environme
 | `KOTLER_ALLOWED_ORIGINS` | sites allowed to use the chat widget (default `*`) |
 | `KOTLER_ADMIN_PASSWORD` | dashboard login. **Required in production** (login is disabled without it) |
 | `KOTLER_SECRET_KEY` | optional: signs login cookies and Buy links (default: derived from the password) |
+| `YOUTUBE_API_KEY` | social listening on YouTube (free: Google Cloud → enable YouTube Data API v3 → API key) |
 | `PUBLIC_BASE_URL` | your public address, e.g. `https://kotler-ai.onrender.com`. Product photos on WhatsApp and Buy buttons on Telegram/WhatsApp need it (the chat apps fetch images from it) |
 
 Generate a random secret: `python -c "import secrets; print(secrets.token_urlsafe(24))"`

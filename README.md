@@ -7,7 +7,8 @@
 AI agents answer customers on WhatsApp, Telegram and a website chat in English, Hinglish and Hindi. They recommend
 products from the real catalogue, track and cancel orders, raise refunds within limits enforced in code, and hand
 over to a person when it matters. Machine learning scores every customer (churn, lifetime value, COD refusal risk);
-retention campaigns are A/B tested against a holdout; every AI call is traced, measured and priced.
+retention campaigns are A/B tested against a holdout; a listening agent reads what people say about the brand and
+the market on YouTube, Bluesky and in the news; every AI call is traced, measured and priced.
 
 It runs on a simulated skincare brand, *Glow & Co.*: 1,500 customers, ~3,700 orders, 36 products.
 
@@ -37,6 +38,7 @@ All taken from the running app with real Gemini answers (nothing mocked).
 | **Inbox copilot:** AI summary, suggested reply grounded in real orders<br>![Inbox copilot](docs/images/04-inbox-copilot.jpg) | **Customer 360:** ML scores, behaviour, "bought via AI chat"<br>![Customer 360](docs/images/05-customer-360.jpg) |
 | **Campaign results:** A/B vs holdout, confidence ranges, honest verdict<br>![Campaign results](docs/images/06-campaign-results.jpg) | **AI performance:** topics and share handled fully by AI<br>![AI performance](docs/images/07-ai-performance.jpg) |
 | **Agent Studio:** handoff rules and what the agent can see and change<br>![Agent Studio](docs/images/08-agent-studio.jpg) | **Ask your data:** plain English to checked SQL, chart and summary<br>![Ask your data](docs/images/09-ask-your-data.jpg) |
+| **Social listening:** real Bluesky and news mentions, topics, ingredients with your products<br>![Social listening](docs/images/11-social-listening.jpg) | **AI brief:** numbers checked against the counts, every [n] links to a real post<br>![AI brief](docs/images/12-listening-brief.jpg) |
 
 ---
 
@@ -80,6 +82,19 @@ All taken from the running app with real Gemini answers (nothing mocked).
 - **Measured against a holdout:** uplift, 95% confidence ranges, significance, required sample size and ROI.
   Customer responses come from a simulator, and the page says so.
 
+### Listen
+- **Social listening agent:** on a schedule (or "Scan now"), reads public mentions of your watch terms from
+  **YouTube** comments, **Bluesky** posts and **Google News**. Official access only; no scraping.
+- **Brand and market:** brand terms raise alerts (a skin reaction or legal threat about you); category, product
+  and competitor terms are market research ("what do people say about vitamin C serums?").
+- **Signal, not noise:** ads, reposts and off-topic results are filtered out. On real data, about 1 in 4 Bluesky
+  results were ads.
+- **AI labels** (sentiment, kind, aspects, an English gist for any language), with comments treated as untrusted
+  data. Ingredients are tagged in code and linked to your own products.
+- **AI brief** with checked numbers and `[n]` links to the real posts. With a paid Gemini key it uses Google Search
+  grounding instead.
+- **Data rules:** YouTube comments are deleted after 30 days (YouTube's developer policies); other mentions after 90.
+
 ### Build agents
 - **Agent Studio:** agents are configuration (instructions, goal, success criteria, tools, temperature). Every save is
   a version; restore in one click; playground; LLM judge scores conversations against the success criteria.
@@ -111,13 +126,17 @@ flowchart LR
         TOOLS["Tools<br>catalogue · orders · refunds · policies (BM25)"]
         API["Dashboard API /api/v1<br>inbox (SSE) · customers · campaigns · studio · ask"]
         OBS["Tracing<br>traces · spans · LLM calls · cost"]
+        LS["Listening agent<br>scheduled scans · labels · brief"]
     end
     LLM["Gemini (free tier)<br>+ fallback model"]
     DB[("SQLite<br>orders · customers · products<br>agents + versions · traces")]
     ML["scikit-learn models<br>churn · value · RTO"]
     UI["React app<br>landing · dashboard"]
+    PUB["YouTube · Bluesky<br>Google News"]
 
     TG & WA & WEB --> CORE --> RT
+    PUB --> LS --> DB
+    LS <--> LLM
     RT <--> LLM
     RT --> TOOLS --> DB
     RT -.-> OBS --> DB
@@ -148,6 +167,7 @@ A prompt is a request. These are rules the model can't talk its way around, each
 | **Privacy** | Guests see no order data until verified (3 attempts); Ask your data blocks names, phones, emails, addresses and chat IDs column by column. |
 | **Campaign safety** | Placeholders for prices and codes, discount cap, frequency cap, opt-out, holdout group. |
 | **Signed attribution** | AI sales count only when the Buy link's HMAC signature is intact. |
+| **Untrusted comments** | Public posts reach the model as data, labels must come from fixed lists, links are stripped: a prompt-injection comment can only mislabel itself. |
 
 ---
 
@@ -205,6 +225,9 @@ secrets, then run the commands above.
 
 **Free hosting (Render):** see [docs/deploy.md](docs/deploy.md).
 
+**Social listening from the command line:** `python -m kotler.listening scan` (one scan),
+`python -m kotler.listening watch --every 6` (forever), `python -m kotler.listening brief`.
+
 **Classic Streamlit dashboard** (the first version of the UI, still works): `streamlit run app.py`.
 
 ---
@@ -225,6 +248,8 @@ Secrets come from environment variables (or the git-ignored `.streamlit/secrets.
 | `KOTLER_ALLOWED_ORIGINS` | sites allowed to embed the chat widget (default `*`) |
 | `KOTLER_LLM_MODEL`, `KOTLER_LLM_FALLBACK_MODELS` | model choice (default `gemini-3.5-flash`, fallback `gemini-3.1-flash-lite`) |
 | `KOTLER_LLM_PROVIDER`, `KOTLER_LLM_BASE_URL`, `KOTLER_LLM_API_KEY` | optional: any OpenAI-compatible provider (Groq, Ollama, ...) |
+| `YOUTUBE_API_KEY` | social listening on YouTube: a free key from Google Cloud with **YouTube Data API v3** enabled (Bluesky and Google News need no key) |
+| `KOTLER_LISTENING_SCHEDULER` | `off` stops the server's listening schedule (it only scans when "every N hours" is set on the page) |
 | `KOTLER_DB_PATH` | where the SQLite file lives (default `data/kotler.db`) |
 
 ---
@@ -249,9 +274,9 @@ appear in the same inbox.
 ## Tests and CI
 
 ```bash
-pytest                                        # 362 tests
+pytest                                        # 386 tests
 cd frontend && npm run typecheck && npx vitest run && npm run build
-# 42 end-to-end checks in a real browser, against a running server (needs: npm i -g playwright && npx playwright install chromium)
+# 44 end-to-end checks in a real browser, against a running server (needs: npm i -g playwright && npx playwright install chromium)
 NODE_PATH=$(npm root -g) node frontend/e2e/smoke.mjs http://localhost:8000
 GEMINI_API_KEY=... python -m kotler.evals.shopping   # real-model evals (also: helpdesk, ask_data)
 ```
@@ -281,6 +306,7 @@ kotler/
   ml/             feature store, RFM segments, churn / value / RTO models, segment builder, training pipeline
   obs/            tracing, metrics and cost, conversation analytics, eval history, business impact
   evals/          real-model evaluation suites
+  listening/      social listening: watch terms, YouTube / Bluesky / Google News sources, labels, insights, schedule
   seed/           catalogue, data generator with planted patterns, product image catalogue
   web/            chat widget, demo store, checkout, product images (media/)
   store.py        demo checkout and signed AI attribution
@@ -324,6 +350,7 @@ Every phase has a write-up explaining *what* was built, *why* it was built that 
 9. [React app: login, Overview, live Inbox](docs/r1-r2-react-app.md)
 10. [React app: Customers, Ask, AI performance, Campaigns, Helpdesk, Agent Studio](docs/r3-r6-complete-app.md)
 11. [Product images, team copilot, topics, handoff rules, sales from AI chats](docs/r7-copilot-handoff-attribution.md)
+12. [Social listening: sources, prompt injection, and what real data taught us](docs/r8-social-listening.md)
 
 ---
 
@@ -336,5 +363,8 @@ Every phase has a write-up explaining *what* was built, *why* it was built that 
 - **Free-tier model.** Replies take a few seconds and can hit rate limits; a fallback model answers when the main one
   is busy.
 - **WhatsApp** sends only to allowlisted test numbers; nothing reaches real customers.
+- **Social listening** reads only sources that allow it (YouTube API, Bluesky, Google News). LinkedIn, Facebook,
+  Instagram and marketplaces need approved business access, so they're not included. Gemini's Google Search
+  grounding needs a paid key; on the free tier the brief is written from the collected mentions.
 - **Rule-based topics and handoff rules** are deliberately simple and readable; misses show up as "Other" in the
   analytics instead of being hidden.
