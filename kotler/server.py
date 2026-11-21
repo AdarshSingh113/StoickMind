@@ -36,7 +36,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from kotler import config, db, store as shop
-from kotler.api import analytics, auth, customers, inbox, operations, overview, studio
+from kotler.api import analytics, auth, customers, inbox, listening, operations, overview, studio
 from kotler.channels import core, telegram, whatsapp
 
 WEB_DIR = Path(__file__).with_name("web")
@@ -48,6 +48,9 @@ SESSION_ID = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     startup()
+    if os.environ.get("KOTLER_LISTENING_SCHEDULER", "on") != "off":
+        from kotler.listening.runner import start_scheduler
+        start_scheduler()     # only scans when "every N hours" is set on the Listening page
     yield
 
 
@@ -65,7 +68,7 @@ app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in os.environ.
                    allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
 
 
-for module in (overview, inbox, customers, analytics, operations, studio):
+for module in (overview, inbox, customers, analytics, operations, studio, listening):
     app.include_router(module.router)
 
 

@@ -23,6 +23,7 @@ const CampaignDetail = named(() => import("@/pages/Campaigns"), "CampaignDetail"
 const Helpdesk = named(() => import("@/pages/Helpdesk"), "Helpdesk");
 const Studio = named(() => import("@/pages/Studio"), "Studio");
 const AgentEditor = named(() => import("@/pages/Studio"), "AgentEditor");
+const Listening = named(() => import("@/pages/Listening"), "Listening");
 
 const page = (el: ReactNode) => <Suspense fallback={<div className="p-8"><Skeleton className="h-8 w-48" /></div>}>{el}</Suspense>;
 
@@ -69,6 +70,7 @@ export function App() {
         <Route path="campaigns/new" element={page(<NewCampaign />)} />
         <Route path="campaigns/:id" element={page(<CampaignDetail />)} />
         <Route path="helpdesk" element={page(<Helpdesk />)} />
+        <Route path="listening" element={page(<Listening />)} />
         <Route path="studio" element={page(<Studio />)} />
         <Route path="studio/:slug" element={page(<AgentEditor />)} />
         <Route path="*" element={<NotFound />} />

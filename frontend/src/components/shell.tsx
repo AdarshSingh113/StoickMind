@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Bot, ChartNoAxesCombined, Inbox, LayoutDashboard, LifeBuoy, LogOut, Megaphone, Menu, MessageSquareText, Moon, Search,
+  Bot, ChartNoAxesCombined, Inbox, LayoutDashboard, LifeBuoy, LogOut, Megaphone, Menu, MessageSquareText, Moon, Radar, Search,
   Store, Sun, TriangleAlert, UsersRound, X,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -22,6 +22,7 @@ export const NAV: { section: string; items: NavItem[] }[] = [
   ] },
   { section: "Grow & support", items: [
     { to: "/app/campaigns", label: "Campaigns", icon: Megaphone },
+    { to: "/app/listening", label: "Social listening", icon: Radar },
     { to: "/app/helpdesk", label: "Helpdesk", icon: LifeBuoy },
   ] },
   { section: "AI", items: [

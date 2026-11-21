@@ -45,6 +45,12 @@ class LLMResponse:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     latency_ms: int = 0
+    sources: list[dict] = field(default_factory=list)   # web pages a grounded answer used: {title, url}
+
+
+# Pass `tools=[GOOGLE_SEARCH]` to let Gemini search Google before answering ("grounding"). The answer then comes
+# with the web pages it used (LLMResponse.sources). Gemini only; on the free tier Google may refuse it.
+GOOGLE_SEARCH = {"google_search": {}}
 
 
 class LLMError(Exception):
@@ -74,6 +80,8 @@ class OpenAICompatLLM:
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None,
              temperature: float = 0.3) -> LLMResponse:
+        if tools and GOOGLE_SEARCH in tools:
+            raise LLMError("google_search needs the Gemini provider", "Web search needs the Gemini provider.")
         oa = self._openai
         kwargs = dict(model=self.model, messages=messages, temperature=temperature)
         if tools:
@@ -228,7 +236,9 @@ class GeminiLLM:
         body: dict = {"contents": contents, "generationConfig": {"temperature": temperature}}
         if system:
             body["systemInstruction"] = system
-        if tools:
+        if tools == [GOOGLE_SEARCH]:
+            body["tools"] = [{"google_search": {}}]
+        elif tools:
             body["tools"] = [{"functionDeclarations": [self._schema(t) for t in tools]}]
         # Main model first; if it's overloaded even after retries, fall back to the next one.
         last_error: LLMError | None = None
@@ -290,7 +300,9 @@ class GeminiLLM:
         if tool_calls:
             raw["tool_calls"] = tool_calls
         usage = data.get("usageMetadata") or {}
-        return LLMResponse(content=text or None, tool_calls=calls, raw=raw, latency_ms=latency,
+        chunks = (candidates[0].get("groundingMetadata") or {}).get("groundingChunks") or []
+        sources = [{"title": c["web"].get("title") or "", "url": c["web"].get("uri") or ""} for c in chunks if c.get("web")]
+        return LLMResponse(content=text or None, tool_calls=calls, raw=raw, latency_ms=latency, sources=sources,
                            prompt_tokens=usage.get("promptTokenCount", 0),
                            completion_tokens=usage.get("candidatesTokenCount", 0)
                            + usage.get("thoughtsTokenCount", 0))

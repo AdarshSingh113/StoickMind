@@ -182,6 +182,19 @@ for (const tab of ["Traces", "Cost", "Evals", "Business impact"]) {
 await page.getByText(/Measured net value/).waitFor();
 ok(true, "AI performance tabs render");
 
+console.log("Social listening");
+await page.goto(base + "/app/listening");
+await page.getByText("Watch terms", { exact: true }).waitFor();
+ok(await page.getByText("Official, allowed access only").isVisible() && await page.getByRole("checkbox", { name: "Watch vitamin c serum" }).isChecked(),
+  "listening page shows sources and the default watch terms");
+const watch = `e2e term ${Date.now() % 100000}`;
+await page.getByPlaceholder("e.g. a competitor's name").fill(watch);
+await page.getByRole("button", { name: "Add term" }).click();
+await page.getByRole("checkbox", { name: `Watch ${watch}` }).waitFor();
+ok(true, "a watch term can be added");
+await page.getByRole("button", { name: `Remove ${watch}` }).click();
+await page.getByRole("checkbox", { name: `Watch ${watch}` }).waitFor({ state: "detached" });
+
 console.log("Command palette, dark mode, mobile");
 await page.keyboard.press("Control+k");
 await page.getByPlaceholder("Search pages or conversations…").fill("rash");
